@@ -67,12 +67,12 @@ export default function AdminPanelPremium() {
         if (user.email === correoAdmin) {
           const mapeoClientes: { [key: string]: ArticuloAgrupado[] } = {}
 
+          
           // Descargar GOs globales
           const { data: dataGos } = await supabase.from('gos').select('*')
           if (dataGos) {
             setGosAdmin(dataGos.map(g => ({ id: g.id, title: g.title, group_name: g.group_name })))
             if (dataGos.length > 0 && !selectedGoId) setSelectedGoId(dataGos[0].id)
-
             dataGos.forEach(go => {
               const claims = go.claims_integrantes || {}
               const precioFijoGO = 12.50
