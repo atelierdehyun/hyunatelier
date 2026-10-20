@@ -28,7 +28,6 @@ type ProductoAdmin = {
   precio: number;
   go_id: number;
 }
-
 export default function AdminPanelPremium() {
   const [usuarioEmail, setUsuarioEmail] = useState('')
   const [loading, setLoading] = useState(true)
@@ -57,7 +56,7 @@ export default function AdminPanelPremium() {
   const [newShopName, setNewShopName] = useState('')
   const [newShopPrice, setNewShopPrice] = useState('')
   const [newShopStatus, setNewShopStatus] = useState('INSTOCK')
-  const [newShopImage, setNewShopImage] = useState('') // Estado para la foto de la Shop
+  const [newShopImage, setNewShopImage] = useState('')
   async function cargarDatosHibridos() {
     setLoading(true)
     try {
@@ -163,7 +162,7 @@ export default function AdminPanelPremium() {
     } else if (targetForm === 'prod') {
       setNewProdImage(publicUrl)
     } else {
-      setNewShopImage(publicUrl) // Guarda la foto en el estado de la Shop
+      setNewShopImage(publicUrl)
     }
     setSubiendoImagen(false)
     alert('¡Imagen cargada correctamente desde tu galería! 📸✨')
@@ -213,6 +212,7 @@ export default function AdminPanelPremium() {
       alert('Error al guardar el artículo: ' + error.message)
     }
   }
+
   async function handleCrearItemShop(e: React.FormEvent) {
     e.preventDefault()
     if (!newShopName || !newShopPrice) return alert('Por favor llena el nombre y precio de la mercancía 🛍️')
@@ -223,7 +223,7 @@ export default function AdminPanelPremium() {
         detalles: newShopName.toUpperCase(),
         total_pagar: Number(newShopPrice),
         estado: newShopStatus,
-        imagen_producto: newShopImage || null, // Guardamos la foto subida en la base de datos
+        imagen_producto: newShopImage || null,
         user_email: 'STOCK_TIENDA_FISICA'
       }
     ])
@@ -277,16 +277,16 @@ export default function AdminPanelPremium() {
     <div className="min-h-screen bg-[#FFF0F4] font-sans text-zinc-700 w-full flex flex-col items-center antialiased pb-12 px-4">
       
       {/* Botón Volver */}
-      <div className="w-full max-w-5xl pt-6 text-left">
+      <div className="w-full max-w-4xl pt-6 text-left">
         <Link href="/gos" className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-pink-600 transition-colors">
           🗂️ ⏤ volver a la masterlist
         </Link>
       </div>
 
       {/* Grilla triple de formularios */}
-      <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-start">
+      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-start">
         
-        {/* STEP 1: LANZAMIENTO GLOBAL */}
+        {/* FORMULARIO 1: REGISTRAR GO GLOBAL */}
         <form onSubmit={handleCrearGO} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 1: REGISTRAR GO GLOBAL</h2>
           <div className="flex flex-col gap-1">
@@ -306,8 +306,7 @@ export default function AdminPanelPremium() {
             {loadingForm ? 'GUARDANDO...' : '➕ LANZAR GO'}
           </button>
         </form>
-
-        {/* STEP 2: ARTÍCULOS CATÁLOGO */}
+        {/* FORMULARIO 2: AGREGAR ARTÍCULOS */}
         <form onSubmit={handleCrearProducto} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 2: AGREGAR ARTÍCULOS</h2>
           <div className="flex flex-col gap-1">
@@ -346,8 +345,7 @@ export default function AdminPanelPremium() {
             {loadingForm ? 'AÑADIENDO...' : '📦 PUBLICAR PRODUCTO'}
           </button>
         </form>
-
-        {/* STEP 3: STOCK FÍSICO SHOP CON CARGA DE IMAGEN DETECTABLE */}
+        {/* STEP 3: CONTROL STOCK FÍSICO (SHOP) */}
         <form onSubmit={handleCrearItemShop} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 3: CONTROL STOCK FÍSICO (SHOP)</h2>
           <div className="flex flex-col gap-1">
@@ -376,6 +374,7 @@ export default function AdminPanelPremium() {
         </form>
 
       </div>
+
       {/* PANEL DE CONTROL DE PRODUCTOS */}
       <div className="w-full max-w-4xl bg-white border border-pink-100 rounded-3xl p-6 mt-6 shadow-xs space-y-4">
         <h2 className="text-[11px] font-black uppercase tracking-wider text-purple-600 border-b border-pink-50 pb-1 font-mono">🛠️ CONTROL Y BORRADO RÁPIDO DE PRODUCTOS</h2>
@@ -398,7 +397,6 @@ export default function AdminPanelPremium() {
           </div>
         )}
       </div>
-
       {/* Control de Joiners */}
       <div className="w-full max-w-4xl space-y-6 mt-8">
         <div className="bg-white border border-pink-100 rounded-3xl p-5 text-center">
