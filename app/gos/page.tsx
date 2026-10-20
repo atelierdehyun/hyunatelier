@@ -26,6 +26,8 @@ type Producto = {
 
 export default function Masterlist() {
   const [pestanaActiva, setPestanaActiva] = useState<'masterlist' | 'mis_claims'>('masterlist')
+  const [bandaSeleccionada, setBandaSeleccionada] = useState<'stray kids' | 'enhypen' | 'otros'>('stray kids')
+  
   const [gos, setGos] = useState<Go[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,12 +37,12 @@ export default function Masterlist() {
   const [goSeleccionado, setGoSeleccionado] = useState<number | null>(null)
   const [productoSeleccionado, setProductoSeleccionado] = useState<number | null>(null)
   const [integranteSeleccionado, setIntegranteSeleccionado] = useState<string | null>(null)
+  const [usuarioHizoClicEnProducto, setUsuarioHizoClicEnProducto] = useState(false)
   async function inicializarPagina() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (user?.email) setUsuarioEmail(user.email)
     
-    // Descargamos los datos ordenando los GOs del más nuevo al más viejo
     const { data: dataGos } = await supabase.from('gos').select('*').order('id', { ascending: false })
     const { data: dataProductos } = await supabase.from('productos').select('*').order('id', { ascending: true })
     
@@ -53,59 +55,59 @@ export default function Masterlist() {
     if (urlGoId && dataGos) {
       const idNumerico = Number(urlGoId)
       setGoSeleccionado(idNumerico)
+      
+      const goEncontrado = dataGos.find(g => g.id === idNumerico)
+      if (goEncontrado) {
+        const nombreGrupo = goEncontrado.group_name.toLowerCase()
+        if (nombreGrupo === 'stray kids' || nombreGrupo === 'enhypen') {
+          setBandaSeleccionada(nombreGrupo as any)
+        } else {
+          setBandaSeleccionada('otros')
+        }
+      }
+
       if (dataProductos) {
         const primerProducto = dataProductos.find(p => p.go_id === idNumerico)
         if (primerProducto) setProductoSeleccionado(primerProducto.id)
       }
     } else if (dataGos && dataGos.length > 0) {
-      const primerGoReal = dataGos[0]
-      setGoSeleccionado(primerGoReal.id)
+      const primerGoSKZ = dataGos.find(g => g.group_name.toLowerCase() === 'stray kids')
+      const goInicial = primerGoSKZ || dataGos
       
-      if (dataProductos) {
-        const primerProducto = dataProductos.find(p => p.go_id === primerGoReal.id)
-        if (primerProducto) {
-          setProductoSeleccionado(primerProducto.id)
+      if (goInicial) {
+        setGoSeleccionado(goInicial.id)
+        const gName = goInicial.group_name.toLowerCase()
+        if (gName === 'stray kids' || gName === 'enhypen') {
+          setBandaSeleccionada(gName as any)
         } else {
-          setProductoSeleccionado(null)
+          setBandaSeleccionada('otros')
+        }
+
+        if (dataProductos) {
+          const primerProducto = dataProductos.find(p => p.go_id === goInicial.id)
+          if (primerProducto) setProductoSeleccionado(primerProducto.id)
         }
       }
     }
     setLoading(false)
   }
 
-  useEffect(() => { 
-    inicializarPagina() 
-  }, [])
+  useEffect(() => { inicializarPagina() }, [])
 
   const slots = (t: string | null) => t ? t.split(',').map(s => s.trim()) : ['Slot Único']
   async function handleClaim(producto: Producto, integrante: string) {
     if (!usuarioEmail) return setMessage('Inicia sesión primero 🎀')
-    
-    // 🔍 VERIFICACIÓN DE INVENTARIO: Comprobamos si el ítem tiene existencias reales
-    const stockActual = (producto as any).cantidad_disponible ?? 1;
-    if (stockActual <= 0) {
-      alert('¡Agotado! Este artículo ya se encuentra SOLD OUT 😭');
-      return;
-    }
-
     const actuales = producto.claims_integrantes || {}
     if (actuales[integrante]) return setMessage('Ya reclamado 😭')
-    
     const limite = new Date(); limite.setDate(limite.getDate() + 2)
     const nuevos = { ...actuales, [integrante]: usuarioEmail }
     
-    // 🧮 RESTA AUTOMÁTICA: Calculamos la nueva cantidad restante
-    const nuevoStock = stockActual - 1;
-
-    // Actualizamos tanto las reservas como la cantidad disponible en Supabase
     const { error } = await supabase.from('productos').update({ 
-      claims_integrantes: nuevos, 
-      due_date: limite.toISOString(),
-      cantidad_disponible: nuevoStock // La base de datos descuenta 1 unidad sola
+      claims_integrantes: nuevos, due_date: limite.toISOString()
     }).eq('id', producto.id)
     
     if (!error) { 
-      alert(`¡Claim exitoso! Tienes 48h para registrar tu pago. Quedan ${nuevoStock} unidades libres.`); 
+      alert('¡Claim exitoso! Tienes 48h para registrar tu pago.'); 
       setIntegranteSeleccionado(null)
       inicializarPagina() 
     }
@@ -116,39 +118,54 @@ export default function Masterlist() {
     productos.forEach(p => Object.keys(p.claims_integrantes || {}).forEach(k => {
       if (p.claims_integrantes?.[k] === usuarioEmail) {
         const goAsociado = gos.find(g => g.id === p.go_id)
-        list.push({ 
-          title: goAsociado ? goAsociado.title : 'GO', 
-          item: p.nombre_producto,
-          int: k, 
-          precio: p.precio,
-          date: p.due_date ? new Date(p.due_date).toLocaleDateString() : '⏳' 
-        })
+        list.push({ title: goAsociado ? goAsociado.title : 'GO', item: p.nombre_producto, int: k, precio: p.precio, date: p.due_date ? new Date(p.due_date).toLocaleDateString() : '⏳' })
       }
     }))
     return list
   })()
 
+  const gosFiltradosPorBanda = gos.filter(g => {
+    const nombre = g.group_name.toLowerCase()
+    if (bandaSeleccionada === 'stray kids') return nombre === 'stray kids'
+    if (bandaSeleccionada === 'enhypen') return nombre === 'enhypen'
+    return nombre !== 'stray kids' && nombre !== 'enhypen'
+  })
+
   const activeGo = gos.find(g => g.id === goSeleccionado)
   const productosDelGo = productos.filter(p => p.go_id === goSeleccionado)
   const activeProducto = productos.find(p => p.id === productoSeleccionado)
 
-  const imagenAExhibir = activeProducto?.imagen_producto || activeGo?.imagen_general
+  // 📸 LÓGICA DE FOTO GENERAL PRIORITARIA: Se queda la de portada fija a menos que toquen un artículo
+  const imagenAExhibir = usuarioHizoClicEnProducto && activeProducto?.imagen_producto
+    ? activeProducto.imagen_producto 
+    : activeGo?.imagen_general
 
   const handleCambioGo = (id: number) => {
     setGoSeleccionado(id)
     const primerProd = productos.find(p => p.go_id === id)
     setProductoSeleccionado(primerProd ? primerProd.id : null)
     setIntegranteSeleccionado(null)
+    setUsuarioHizoClicEnProducto(false) // Al cambiar de másterlist, volvemos a mostrar la foto promocional grande
     setMessage('')
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FFF0F4] flex items-center justify-center font-mono text-xs">
-        ✧ loading_database.sys ...
-      </div>
-    )
+  const handleCambioBandaPestana = (banda: 'stray kids' | 'enhypen' | 'otros') => {
+    setBandaSeleccionada(banda)
+    const primerGoDeEsaBanda = gos.find(g => {
+      const name = g.group_name.toLowerCase()
+      if (banda === 'stray kids') return name === 'stray kids'
+      if (banda === 'enhypen') return name === 'enhypen'
+      return name !== 'stray kids' && name !== 'enhypen'
+    })
+    if (primerGoDeEsaBanda) {
+      handleCambioGo(primerGoDeEsaBanda.id)
+    } else {
+      setGoSeleccionado(null)
+      setProductoSeleccionado(null)
+    }
   }
+
+  if (loading) return <div className="min-h-screen bg-[#FFF0F4] flex items-center justify-center font-mono text-xs">✧ loading_database.sys ...</div>
   return (
     <div className="min-h-screen bg-white font-sans text-zinc-900 w-full flex flex-col items-center pb-12">
       
@@ -162,23 +179,33 @@ export default function Masterlist() {
         </span>
       </div>
 
-      {/* Tabs */}
+      {/* PESTAÑAS MAESTRAS TOTALMENTE LIMPIAS SIN EMOJIS */}
       <div className="w-full max-w-6xl px-6 mt-6">
+        <div className="text-[9px] font-mono font-black uppercase text-zinc-400 tracking-widest mb-1.5">select k-pop group category</div>
+        <div className="flex gap-2 border-b border-zinc-100 pb-3">
+          <button type="button" onClick={() => handleCambioBandaPestana('stray kids')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'stray kids' ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>stray kids</button>
+          <button type="button" onClick={() => handleCambioBandaPestana('enhypen')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'enhypen' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>enhypen</button>
+          <button type="button" onClick={() => handleCambioBandaPestana('otros')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'otros' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>otros grupos</button>
+        </div>
+      </div>
+
+      {/* Tabs Internos */}
+      <div className="w-full max-w-6xl px-6 mt-4">
         <div className="flex gap-2 text-[10px] font-mono border-b border-zinc-100 pb-2">
-          <button onClick={() => setPestanaActiva('masterlist')} className={`px-4 py-2 rounded-full font-bold transition-all ${pestanaActiva === 'masterlist' ? 'bg-[#FFF0F4] text-pink-500 border border-rose-100' : 'text-zinc-400'}`}>📂 masterlist.sys</button>
-          <button onClick={() => setPestanaActiva('mis_claims')} className={`px-4 py-2 rounded-full font-bold transition-all ${pestanaActiva === 'mis_claims' ? 'bg-[#FFF0F4] text-pink-500 border border-rose-100' : 'text-zinc-400'}`}>🎀 mis_claims.sys ({misClaims.length})</button>
+          <button type="button" onClick={() => setPestanaActiva('masterlist')} className={`px-4 py-2 rounded-full font-bold transition-all ${pestanaActiva === 'masterlist' ? 'bg-[#FFF0F4] text-pink-500 border border-rose-100' : 'text-zinc-400'}`}>📂 masterlist.sys</button>
+          <button type="button" onClick={() => setPestanaActiva('mis_claims')} className={`px-4 py-2 rounded-full font-bold transition-all ${pestanaActiva === 'mis_claims' ? 'bg-[#FFF0F4] text-pink-500 border border-rose-100' : 'text-zinc-400'}`}>🎀 mis_claims.sys ({misClaims.length})</button>
         </div>
       </div>
 
       {pestanaActiva === 'masterlist' ? (
-        <div className="w-full max-w-6xl px-6 mt-8 grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+        <div className="w-full max-w-6xl px-6 mt-6 grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
           
-          {/* PANEL IZQUIERDO (VISUAL) */}
+          {/* PANEL IZQUIERDO (CON PORTADA GENERAL DEL GO FIJA POR DEFECTO) */}
           <div className="md:col-span-6 flex flex-col gap-4">
             <div className="relative w-full bg-[#EEF7FC] rounded-3xl min-h-[480px] p-8 flex flex-col justify-between overflow-hidden border border-zinc-100">
               <div className="flex-1 flex items-center justify-center">
                 {imagenAExhibir ? (
-                  <img src={imagenAExhibir} alt="Preview" className="max-h-[300px] w-auto object-contain rounded-2xl drop-shadow-md" />
+                  <img src={imagenAExhibir} alt="Preview" className="max-h-[340px] w-auto object-contain rounded-2xl drop-shadow-md transition-all duration-300" />
                 ) : (
                   <div className="text-zinc-300 font-black text-3xl tracking-tighter select-none">NO IMAGE</div>
                 )}
@@ -190,48 +217,39 @@ export default function Masterlist() {
                 </div>
                 <h2 className="text-2xl font-black tracking-tight text-zinc-900 uppercase">{activeGo?.title}</h2>
                 <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  {activeProducto ? `Viendo: ${activeProducto.nombre_producto}` : 'SELECCIONA UN ITEM'}
+                  {usuarioHizoClicEnProducto && activeProducto ? `📦 Viendo ítem: ${activeProducto.nombre_producto}` : '✿ Viendo: Portada General del GO'}
                 </p>
               </div>
             </div>
             {message && <p className="text-[10px] font-bold text-center text-pink-500 bg-pink-50/50 py-2 rounded-xl border border-pink-100">{message}</p>}
           </div>
-          {/* PANEL DERECHO (CONTROLADORES INTERACTIVOS) */}
+          {/* PANEL DERECHO INTERACTIVO */}
           <div className="md:col-span-6 flex flex-col gap-5">
             
-            {/* 🔄 SELECTOR AUTOMÁTICO DE GOs ACTIVOS */}
-            <div className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-wider border-b pb-1 mb-2">
-              📂 Cambiar de másterlist / go
+            {/* SELECTOR DE GOS FILTRADO POR LA CATEGORÍA ACTIVA */}
+            <div className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-wider border-b pb-1 mb-1">
+              📂 Órdenes grupales activas ({bandaSeleccionada})
             </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-3">
-              {gos.map(g => (
-                <button
-                  key={g.id}
-                  onClick={() => handleCambioGo(g.id)}
-                  className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 border ${
-                    goSeleccionado === g.id
-                      ? 'bg-pink-500 text-white border-pink-500 shadow-sm'
-                      : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                  }`}
-                >
-                  {g.title.toLowerCase()}
-                </button>
-              ))}
+            <div className="flex gap-1.5 overflow-x-auto pb-2">
+              {gosFiltradosPorBanda.length === 0 ? (
+                <span className="text-[10px] font-mono text-zinc-400 py-1">No hay másterlists de este grupo por el momento 🍰</span>
+              ) : (
+                gosFiltradosPorBanda.map(g => (
+                  <button type="button" key={g.id} onClick={() => handleCambioGo(g.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 border ${goSeleccionado === g.id ? 'bg-pink-500 text-white border-pink-500 shadow-xs' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>{g.title.toLowerCase()}</button>
+                ))
+              )}
             </div>
 
-            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1">Products / Items</div>
-
-            {/* Listado de Productos Ovalados */}
+            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mt-1">Products / Items</div>
             <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
               {productosDelGo.map(prod => {
                 const isSelected = productoSeleccionado === prod.id
                 return (
                   <button
+                    type="button"
                     key={prod.id}
-                    onClick={() => { setProductoSeleccionado(prod.id); setIntegranteSeleccionado(null); }}
-                    className={`w-full py-2.5 px-5 border rounded-full text-xs font-bold tracking-wide transition-all uppercase text-center ${
-                      isSelected ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm' : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-400'
-                    }`}
+                    onClick={() => { setProductoSeleccionado(prod.id); setIntegranteSeleccionado(null); setUsuarioHizoClicEnProducto(true); }}
+                    className={`w-full py-2.5 px-5 border rounded-full text-xs font-bold tracking-wide transition-all uppercase text-center ${isSelected ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm' : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-400'}`}
                   >
                     {prod.nombre_producto} — \${prod.precio} USD
                   </button>
@@ -240,64 +258,45 @@ export default function Masterlist() {
             </div>
 
             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mt-1">Options</div>
-
-            {/* Grilla de Integrantes en Cápsulas */}
             {activeProducto && (
               <div className="grid grid-cols-2 gap-2">
                 {slots(activeProducto.lista_slots).map(int => {
                   const dueño = activeProducto.claims_integrantes?.[int]
                   const isCurrentSelection = integranteSeleccionado === int
                   return (
-                    <button
-                      key={int}
-                      disabled={!!dueño}
-                      onClick={() => setIntegranteSeleccionado(isCurrentSelection ? null : int)}
-                      className={`flex flex-col items-center justify-center py-2.5 px-4 rounded-full border text-xs font-bold transition-all ${
-                        dueño ? 'bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed line-through' :
-                        isCurrentSelection ? 'bg-pink-500 text-white border-pink-500 shadow-sm' :
-                        'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-900 hover:bg-zinc-50'
-                      }`}
-                    >
+                    <button type="button" key={int} disabled={!!dueño} onClick={() => setIntegranteSeleccionado(isCurrentSelection ? null : int)} className={`flex flex-col items-center justify-center py-2.5 px-4 rounded-full border text-xs font-bold transition-all ${dueño ? 'bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed line-through' : isCurrentSelection ? 'bg-pink-500 text-white border-pink-500 shadow-sm' : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-900 hover:bg-zinc-50'}`}>
                       <span className="truncate max-w-full text-[12px]">{int}</span>
-                      <span className={`text-[8px] uppercase tracking-wider font-mono mt-0.5 ${dueño ? 'text-zinc-300' : isCurrentSelection ? 'text-pink-100' : 'text-zinc-400'}`}>
-                        {dueño ? 'ocupado' : isCurrentSelection ? 'es tuyo ♡' : 'libre ♡'}
-                      </span>
+                      <span className={`text-[8px] uppercase tracking-wider font-mono mt-0.5 ${dueño ? 'text-zinc-300' : isCurrentSelection ? 'text-pink-100' : 'text-zinc-400'}`}>{dueño ? 'ocupado' : isCurrentSelection ? 'es tuyo ♡' : 'libre ♡'}</span>
                     </button>
                   )
                 })}
               </div>
             )}
 
-            {/* Widget de Transferencia Automático */}
+            {/* 📝 CUADRO BANCARIO: ESCRIBE AQUÍ TUS DATOS DE DEPÓSITO REALES */}
             {integranteSeleccionado && activeProducto ? (
               <div className="border border-purple-200 bg-purple-50/40 rounded-2xl p-4 mt-2 space-y-3">
                 <div className="flex justify-between items-center border-b border-purple-100 pb-2">
                   <div>
-                    <h4 className="text-[10px] font-black uppercase text-purple-700 tracking-wider">Anexo: Datos Bancarios</h4>
+                    <h4 className="text-[10px] font-black uppercase text-purple-700 tracking-wider">💳 Datos de Transferencia</h4>
                     <p className="text-[11px] font-bold text-zinc-700 mt-0.5">Item: {activeProducto.nombre_producto} ({integranteSeleccionado})</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-mono font-black text-purple-700 text-sm">\${activeProducto.precio} USD</p>
-                  </div>
+                  <div className="text-right"><p className="font-mono font-black text-purple-700 text-sm">\${activeProducto.precio} USD</p></div>
                 </div>
                 <div className="text-[11px] text-zinc-600 font-medium">
-                  <p>• <span className="font-bold text-zinc-800">Banco:</span> Tu Banco / PayPal</p>
-                  <p>• <span className="font-bold text-zinc-800">Cuenta:</span> 1234-5678-9012</p>
-                  <p>• <span className="font-bold text-zinc-800">Titular:</span> Hyun Atelier Owner</p>
+                  <p>• <span className="font-bold text-zinc-800">Banco:</span> PICHINCHA</p>
+                  <p>• <span className="font-bold text-zinc-800">Cuenta:</span> 2213367970</p>
+                  <p>• <span className="font-bold text-zinc-800">Titular:</span> Hwang Lia - ya sabes mi nombre 🎀</p>
                 </div>
-                <button onClick={() => handleClaim(activeProducto, integranteSeleccionado)} className="w-full bg-zinc-950 hover:bg-zinc-800 text-white font-black text-[11px] uppercase py-3 rounded-full tracking-widest transition shadow-md">
-                  ✓ Confirmar Reserva (48h de plazo)
-                </button>
+                <button type="button" onClick={() => handleClaim(activeProducto, integranteSeleccionado)} className="w-full bg-zinc-950 hover:bg-zinc-800 text-white font-black text-[11px] uppercase py-3 rounded-full tracking-widest transition shadow-md">✓ Confirmar Reserva (48h de plazo)</button>
               </div>
             ) : (
-              <div className="border border-dashed border-zinc-200 rounded-2xl p-4 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-wider bg-zinc-50/50">
-                Selecciona un integrante disponible para ver los datos de pago
-              </div>
+              <div className="border border-dashed border-zinc-200 rounded-2xl p-4 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-wider bg-zinc-50/50">Selecciona un integrante disponible para ver los datos de pago</div>
             )}
           </div>
         </div>
       ) : (
-        /* HISTORIAL INDIVIDUAL DE COMPRAS */
+        /* HISTORIAL DE CLAIMS */
         <div className="w-full max-w-2xl px-6 mt-8">
           <h1 className="text-2xl font-black tracking-tight text-center text-zinc-900 mb-6 uppercase">resumen de claims.</h1>
           {misClaims.length === 0 ? (
