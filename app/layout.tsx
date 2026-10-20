@@ -3,7 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "atelierdehyun",
+  title: "hyuneatelier",
   description: "Group Orders & K-Pop Shop",
 };
 
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-200" />
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-200" />
               </div>
-              <span className="ml-1 font-bold">✧ ATELIERDEHYUN.SYS</span>
+              <span className="ml-1 font-bold">✧ hyuneatelier.SYS</span>
             </div>
             <div className="hidden md:flex gap-4 font-bold text-zinc-400/80">
               <span> ✦</span>
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 href="/" 
                 className="bg-[#FFF0F4] text-pink-500 px-5 py-2 rounded-full text-sm font-black tracking-tight lowercase border border-pink-200 shadow-sm hover:shadow-md transition-all duration-200 block"
               >
-                atelierdehyun<span className="text-amber-400 font-serif ml-0.5">.𐔌՞. .՞𐦯 ݁˖</span>
+                hyuneatelier<span className="text-amber-400 font-serif ml-0.5">.𐔌՞. .՞𐦯 ݁˖</span>
               </Link>
             </div>
 

@@ -67,17 +67,27 @@ export default function AtelierWelcome() {
           </div>
         </div>
 
-        {/* VENTANA 2 (Centro - Crema y Amarillo Retro Pop 💛) */}
-        <div className="bg-white rounded-2xl overflow-hidden shadow-xs md:col-span-3 self-center p-5 text-center space-y-4 border border-amber-100 relative z-10 md:-translate-y-2">
-          <div className="text-[9px] font-mono text-amber-400 font-bold uppercase tracking-widest text-left border-b border-amber-50 pb-1.5 flex justify-between">
-            <span>msg_window.sys</span>
-            <span className="text-pink-400">✦</span>
-          </div>
-          <p className="font-serif italic text-amber-500 text-xl tracking-tight lowercase">atelierdehyun</p>
-          <h2 className="text-xs font-black uppercase tracking-widest text-zinc-500 leading-tight">Gos & Proxy Help</h2>
-          <Link href="/shop" className="bg-gradient-to-r from-amber-300 to-amber-400 hover:from-amber-400 hover:to-amber-500 text-white text-[10px] uppercase font-black tracking-wildest py-2.5 rounded-full transition-all duration-150 w-full inline-block text-center shadow-xs">Enter Shop</Link>
-        </div>
+        {/* 💌 VENTANA CENTRAL: MSG_WINDOW.SYS */}
+<div className="bg-white/95 rounded-2xl overflow-hidden shadow-xs border border-pink-100 flex flex-col justify-between p-5 md:col-span-3 self-center space-y-4 text-center transform md:rotate-1 hover:rotate-0 transition-transform duration-200">
+  <div className="space-y-1">
+    <span className="text-[8px] font-mono text-pink-400 block uppercase tracking-widest font-black">
+      ✿ msg_window.sys ✿
+    </span>
+    <h2 className="text-xl font-black text-zinc-700 lowercase tracking-tight">
+      hyuneatelier<span className="text-pink-400">.</span>
+    </h2>
+    <p className="text-[10px] text-zinc-400 font-mono uppercase tracking-wide leading-relaxed pt-1">
+      ¡hola! únete a gos, revisa el stock disponible en tiempo real y gestiona tus entregas aquí :3
+    </p>
+  </div>
 
+  <Link 
+    href="/shop" 
+    className="bg-[#a7e0d5] text-white font-mono text-[10px] font-black uppercase tracking-widest py-2.5 rounded-full hover:bg-zinc-900 transition-all text-center block shadow-xs active:scale-95"
+  >
+    ver tienda ➔
+  </Link>
+</div>
         {/* VENTANA 3 (Derecha - Lavanda/Morado Soft 💜) */}
         <div className="bg-white/95 rounded-2xl overflow-hidden shadow-xs border border-purple-100 md:col-span-4 self-end transform md:rotate-1 hover:rotate-0 transition-transform duration-200 relative">
           <div className="bg-purple-50/50 border-b border-purple-100 px-3 py-1.5 flex items-center justify-between text-[9px] text-purple-400 font-mono font-bold">
