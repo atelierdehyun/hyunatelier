@@ -80,17 +80,32 @@ export default function Masterlist() {
   const slots = (t: string | null) => t ? t.split(',').map(s => s.trim()) : ['Slot Único']
   async function handleClaim(producto: Producto, integrante: string) {
     if (!usuarioEmail) return setMessage('Inicia sesión primero 🎀')
+    
+    // 🔍 VERIFICACIÓN DE INVENTARIO: Comprobamos si el ítem tiene existencias reales
+    const stockActual = (producto as any).cantidad_disponible ?? 1;
+    if (stockActual <= 0) {
+      alert('¡Agotado! Este artículo ya se encuentra SOLD OUT 😭');
+      return;
+    }
+
     const actuales = producto.claims_integrantes || {}
     if (actuales[integrante]) return setMessage('Ya reclamado 😭')
+    
     const limite = new Date(); limite.setDate(limite.getDate() + 2)
     const nuevos = { ...actuales, [integrante]: usuarioEmail }
     
+    // 🧮 RESTA AUTOMÁTICA: Calculamos la nueva cantidad restante
+    const nuevoStock = stockActual - 1;
+
+    // Actualizamos tanto las reservas como la cantidad disponible en Supabase
     const { error } = await supabase.from('productos').update({ 
-      claims_integrantes: nuevos, due_date: limite.toISOString()
+      claims_integrantes: nuevos, 
+      due_date: limite.toISOString(),
+      cantidad_disponible: nuevoStock // La base de datos descuenta 1 unidad sola
     }).eq('id', producto.id)
     
     if (!error) { 
-      alert('¡Claim exitoso! Tienes 48h para registrar tu pago.'); 
+      alert(`¡Claim exitoso! Tienes 48h para registrar tu pago. Quedan ${nuevoStock} unidades libres.`); 
       setIntegranteSeleccionado(null)
       inicializarPagina() 
     }
