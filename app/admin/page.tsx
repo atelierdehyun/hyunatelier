@@ -27,7 +27,10 @@ type ProductoAdmin = {
   nombre_producto: string;
   precio: number;
   go_id: number;
+  cantidad_disponible: number;
+  descripcion: string | null;
 }
+
 export default function AdminPanelPremium() {
   const [usuarioEmail, setUsuarioEmail] = useState('')
   const [loading, setLoading] = useState(true)
@@ -51,12 +54,24 @@ export default function AdminPanelPremium() {
   const [newProdPrice, setNewProdPrice] = useState('')
   const [newProdSlots, setNewProdSlots] = useState('')
   const [newProdImage, setNewProdImage] = useState('')
+  const [newProdQty, setNewProdQty] = useState('1')
+  const [newProdDesc, setNewProdDesc] = useState('') // Nueva descripción para GOs
 
   // Estados Formulario 3 (Productos en Stock / Shop)
   const [newShopName, setNewShopName] = useState('')
   const [newShopPrice, setNewShopPrice] = useState('')
   const [newShopStatus, setNewShopStatus] = useState('INSTOCK')
   const [newShopImage, setNewShopImage] = useState('')
+  const [newShopGroup, setNewShopGroup] = useState('stray kids')
+  const [newShopQty, setNewShopQty] = useState('1')
+  const [newShopDesc, setNewShopDesc] = useState('') // Nueva descripción para Shop
+
+  // ✨ ESTADOS EXCLUSIVOS PARA MÓDULO DE EDICIÓN
+  const [editandoProducto, setEditandoProducto] = useState<ProductoAdmin | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPrice, setEditPrice] = useState('')
+  const [editQty, setEditQty] = useState('')
+  const [editDesc, setEditDesc] = useState('')
   async function cargarDatosHibridos() {
     setLoading(true)
     try {
@@ -67,12 +82,12 @@ export default function AdminPanelPremium() {
         if (user.email === correoAdmin) {
           const mapeoClientes: { [key: string]: ArticuloAgrupado[] } = {}
 
-          
           // Descargar GOs globales
           const { data: dataGos } = await supabase.from('gos').select('*')
           if (dataGos) {
             setGosAdmin(dataGos.map(g => ({ id: g.id, title: g.title, group_name: g.group_name })))
             if (dataGos.length > 0 && !selectedGoId) setSelectedGoId(dataGos[0].id)
+
             dataGos.forEach(go => {
               const claims = go.claims_integrantes || {}
               const precioFijoGO = 12.50
@@ -94,8 +109,8 @@ export default function AdminPanelPremium() {
             })
           }
 
-          // Descargar Productos Catálogo para borrar
-          const { data: dataAllProds } = await supabase.from('productos').select('id, nombre_producto, precio, go_id')
+          // Descargar Productos Catálogo (Incluyendo descripción)
+          const { data: dataAllProds } = await supabase.from('productos').select('id, nombre_producto, precio, go_id, cantidad_disponible, descripcion')
           if (dataAllProds) setProductosAdmin(dataAllProds)
 
           // Descargar Pedidos Shop Stock
@@ -103,7 +118,7 @@ export default function AdminPanelPremium() {
           if (dataPedidos) {
             dataPedidos.forEach(ped => {
               const correoCliente = ped.user_email
-              if (correoCliente) {
+              if (correoCliente && correoCliente !== 'STOCK_TIENDA_FISICA') {
                 if (!mapeoClientes[correoCliente]) mapeoClientes[correoCliente] = []
                 mapeoClientes[correoCliente].push({
                   idUnico: `shop-${ped.id}`,
@@ -168,7 +183,7 @@ export default function AdminPanelPremium() {
     alert('¡Imagen cargada correctamente desde tu galería! 📸✨')
   }
 
-  async function handleCrearGO(e: React.FormEvent) {
+  async function handleCreateGO(e: React.FormEvent) {
     e.preventDefault()
     if (!newGoTitle || !newGoGroup) return alert('Por favor llena el título y grupo 🎀')
     setLoadingForm(true)
@@ -197,7 +212,16 @@ export default function AdminPanelPremium() {
     setLoadingForm(true)
 
     const { error } = await supabase.from('productos').insert([
-      { go_id: selectedGoId, nombre_producto: newProdName.toUpperCase(), precio: Number(newProdPrice), lista_slots: newProdSlots, imagen_producto: newProdImage || null, claims_integrantes: {} }
+      { 
+        go_id: selectedGoId, 
+        nombre_producto: newProdName.toUpperCase(), 
+        precio: Number(newProdPrice), 
+        lista_slots: newProdSlots, 
+        imagen_producto: newProdImage || null, 
+        claims_integrantes: {},
+        cantidad_disponible: Number(newProdQty),
+        descripcion: newProdDesc || null // Guardamos la nueva descripción en GOs
+      }
     ])
 
     setLoadingForm(false)
@@ -207,6 +231,8 @@ export default function AdminPanelPremium() {
       setNewProdPrice('')
       setNewProdSlots('')
       setNewProdImage('')
+      setNewProdQty('1')
+      setNewProdDesc('')
       cargarDatosHibridos()
     } else {
       alert('Error al guardar el artículo: ' + error.message)
@@ -222,8 +248,11 @@ export default function AdminPanelPremium() {
       {
         detalles: newShopName.toUpperCase(),
         total_pagar: Number(newShopPrice),
-        estado: newShopStatus,
+        estado: Number(newShopQty) <= 0 ? 'SOLD OUT' : newShopStatus,
         imagen_producto: newShopImage || null,
+        group_name: newShopGroup.toLowerCase(),
+        cantidad_disponible: Number(newShopQty),
+        descripcion: newShopDesc || null, // Guardamos la nueva descripción en Shop
         user_email: 'STOCK_TIENDA_FISICA'
       }
     ])
@@ -234,9 +263,45 @@ export default function AdminPanelPremium() {
       setNewShopName('')
       setNewShopPrice('')
       setNewShopImage('')
+      setNewShopQty('1')
+      setNewShopDesc('')
       cargarDatosHibridos()
     } else {
       alert('Error al guardar en la Shop: ' + error.message)
+    }
+  }
+  // 📝 FUNCIÓN PARA CARGAR LOS DATOS EN EL MÓDULO DE EDICIÓN
+  function iniciarEdicion(prod: ProductoAdmin) {
+    setEditandoProducto(prod)
+    setEditName(prod.nombre_producto)
+    setEditPrice(prod.precio.toString())
+    setEditQty(prod.cantidad_disponible.toString())
+    setEditDesc(prod.descripcion || '')
+  }
+
+  // 💾 FUNCIÓN QUE EJECUTA LA ACTUALIZACIÓN EN SUPABASE
+  async function handleGuardarEdicion(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editandoProducto) return
+    setLoadingForm(true)
+
+    const { error } = await supabase
+      .from('productos')
+      .update({
+        nombre_producto: editName.toUpperCase(),
+        precio: Number(editPrice),
+        cantidad_disponible: Number(editQty),
+        descripcion: editDesc || null
+      })
+      .eq('id', editandoProducto.id)
+
+    setLoadingForm(false)
+    if (!error) {
+      alert('¡Producto actualizado correctamente! 📝✨')
+      setEditandoProducto(null)
+      cargarDatosHibridos()
+    } else {
+      alert('Error al actualizar: ' + error.message)
     }
   }
 
@@ -277,7 +342,7 @@ export default function AdminPanelPremium() {
     <div className="min-h-screen bg-[#FFF0F4] font-sans text-zinc-700 w-full flex flex-col items-center antialiased pb-12 px-4">
       
       {/* Botón Volver */}
-      <div className="w-full max-w-4xl pt-6 text-left">
+      <div className="w-full max-w-5xl pt-6 text-left">
         <Link href="/gos" className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-pink-600 transition-colors">
           🗂️ ⏤ volver a la masterlist
         </Link>
@@ -286,8 +351,8 @@ export default function AdminPanelPremium() {
       {/* Grilla triple de formularios */}
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-start">
         
-        {/* FORMULARIO 1: REGISTRAR GO GLOBAL */}
-        <form onSubmit={handleCrearGO} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
+        {/* FORMULARIO 1: LANZAMIENTOS MÁSTERLIST */}
+        <form onSubmit={handleCreateGO} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 1: REGISTRAR GO GLOBAL</h2>
           <div className="flex flex-col gap-1">
             <label className="text-[8px] font-bold uppercase text-zinc-400">Título del GO</label>
@@ -300,13 +365,12 @@ export default function AdminPanelPremium() {
           <div className="flex flex-col gap-1">
             <label className="text-[8px] font-bold uppercase text-zinc-400">Portada Catálogo</label>
             <input type="file" accept="image/*" onChange={e => uploadImageHandler(e, 'go')} className="text-[10px] text-zinc-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[9px] file:font-black file:uppercase file:bg-pink-50 file:text-pink-600 hover:file:bg-pink-100 cursor-pointer" />
-            {newGoImage && <p className="text-[8px] text-emerald-500 font-mono mt-0.5">✓ Portada lista</p>}
           </div>
           <button type="submit" disabled={loadingForm || subiendoImagen} className="w-full bg-zinc-950 hover:bg-zinc-800 text-white font-black text-[9px] uppercase py-2 rounded-full tracking-widest transition shadow-sm mt-1">
             {loadingForm ? 'GUARDANDO...' : '➕ LANZAR GO'}
           </button>
         </form>
-        {/* FORMULARIO 2: AGREGAR ARTÍCULOS */}
+        {/* FORMULARIO 2: ITEMS DEL CATÁLOGO */}
         <form onSubmit={handleCrearProducto} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 2: AGREGAR ARTÍCULOS</h2>
           <div className="flex flex-col gap-1">
@@ -332,41 +396,67 @@ export default function AdminPanelPremium() {
               <input type="number" step="0.01" placeholder="12.50" value={newProdPrice} onChange={e => setNewProdPrice(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
             </div>
           </div>
+          <div className="flex gap-1.5">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Slots / Integrantes</label>
+              <input type="text" placeholder="Chan, Felix" value={newProdSlots} onChange={e => setNewProdSlots(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
+            </div>
+            <div className="w-20 flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Stock Qty</label>
+              <input type="number" min="1" value={newProdQty} onChange={e => setNewProdQty(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none text-center font-bold" />
+            </div>
+          </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[8px] font-bold uppercase text-zinc-400">Slots (Separados por comas)</label>
-            <input type="text" placeholder="Chan, Felix (O 'Random')" value={newProdSlots} onChange={e => setNewProdSlots(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
+            <label className="text-[8px] font-bold uppercase text-zinc-400">Descripción / Detalles del Ítem</label>
+            <input type="text" placeholder="Ej: Incluye regalo preventa de Everline 🎀" value={newProdDesc} onChange={e => setNewProdDesc(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1 text-xs bg-zinc-50/50 focus:outline-none" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[8px] font-bold uppercase text-zinc-400">Foto del Ítem</label>
             <input type="file" accept="image/*" onChange={e => uploadImageHandler(e, 'prod')} className="text-[10px] text-zinc-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[9px] file:font-black file:uppercase file:bg-pink-50 file:text-pink-600 hover:file:bg-pink-100 cursor-pointer" />
-            {newProdImage && <p className="text-[8px] text-emerald-500 font-mono mt-0.5">✓ Foto ítem enlazada</p>}
           </div>
           <button type="submit" disabled={loadingForm || subiendoImagen} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black text-[9px] uppercase py-2 rounded-full tracking-widest transition shadow-sm mt-1">
             {loadingForm ? 'AÑADIENDO...' : '📦 PUBLICAR PRODUCTO'}
           </button>
         </form>
-        {/* STEP 3: CONTROL STOCK FÍSICO (SHOP) */}
+        {/* FORMULARIO 3: AGREGAR ARTÍCULOS EN STOCK DIRECTOS A LA SHOP (PEDIDOS) */}
         <form onSubmit={handleCrearItemShop} className="bg-white border border-pink-100 rounded-3xl p-5 space-y-2.5 shadow-xs">
           <h2 className="text-[10px] font-black uppercase tracking-wider text-pink-500 border-b border-pink-50 pb-1 font-mono">✿ STEP 3: CONTROL STOCK FÍSICO (SHOP)</h2>
           <div className="flex flex-col gap-1">
-            <label className="text-[8px] font-bold uppercase text-zinc-400">Nombre de la Mercancía en Stock</label>
-            <input type="text" placeholder="Ej: STRAY KIDS GREETINGS" value={newShopName} onChange={e => setNewShopName(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
+            <label className="text-[8px] font-bold uppercase text-zinc-400">Grupo / Categoría Shop</label>
+            <select value={newShopGroup} onChange={e => setNewShopGroup(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none w-full font-bold">
+              <option value="stray kids">🌟 STRAY KIDS SHOP</option>
+              <option value="enhypen">🧬 ENHYPEN SHOP</option>
+              <option value="otros">🍰 OTROS GRUPOS SHOP</option>
+            </select>
+          </div>
+          <div className="flex gap-1.5">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Nombre Mercancía</label>
+              <input type="text" placeholder="Ej: ALBUM NOEASY" value={newShopName} onChange={e => setNewShopName(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
+            </div>
+            <div className="w-20 flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Stock Qty</label>
+              <input type="number" min="0" value={newShopQty} onChange={e => setNewShopQty(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none text-center font-bold text-amber-600" />
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[8px] font-bold uppercase text-zinc-400">Precio del Producto (USD)</label>
             <input type="number" step="0.01" placeholder="Ej: 55.00" value={newShopPrice} onChange={e => setNewShopPrice(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[8px] font-bold uppercase text-zinc-400">Estado de Disponibilidad</label>
+            <label className="text-[8px] font-bold uppercase text-zinc-400">Descripción / Detalles Shop</label>
+            <input type="text" placeholder="Ej: Sellado, primera edición, incluye posters 🍰" value={newShopDesc} onChange={e => setNewShopDesc(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1 text-xs bg-zinc-50/50 focus:outline-none" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[8px] font-bold uppercase text-zinc-400">Estado Inicial</label>
             <select value={newShopStatus} onChange={e => setNewShopStatus(e.target.value)} className="border border-zinc-100 rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50 focus:outline-none w-full">
-              <option value="INSTOCK">📦 PRODUCTO EN STOCK (DISPONIBLE)</option>
+              <option value="INSTOCK">📦 DISPONIBLE (IN STOCK)</option>
               <option value="SOLD OUT">✕ SOLD OUT (AGOTADO)</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[8px] font-bold uppercase text-zinc-400">Foto del Producto Stock</label>
             <input type="file" accept="image/*" onChange={e => uploadImageHandler(e, 'shop')} className="text-[10px] text-zinc-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[9px] file:font-black file:uppercase file:bg-pink-50 file:text-pink-600 hover:file:bg-pink-100 cursor-pointer" />
-            {newShopImage && <p className="text-[8px] text-emerald-500 font-mono mt-0.5">✓ Foto Shop enlazada</p>}
           </div>
           <button type="submit" disabled={loadingForm || subiendoImagen} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black text-[9px] uppercase py-2 rounded-full tracking-widest transition shadow-sm mt-1">
             {loadingForm ? 'SUBIENDO...' : '🛍️ SUBIR DIRECTO A LA SHOP'}
@@ -374,8 +464,40 @@ export default function AdminPanelPremium() {
         </form>
 
       </div>
+      {/* 📝 POP-UP INTEGRADO: FORMULARIO FLOTANTE DE EDICIÓN EN CALIENTE */}
+      {editandoProducto && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <form onSubmit={handleGuardarEdicion} className="bg-white border border-pink-100 rounded-3xl p-6 max-w-md w-full space-y-3 shadow-xl">
+            <div className="flex justify-between items-center border-b pb-1">
+              <h3 className="text-xs font-black uppercase font-mono text-purple-600">📝 EDITAR DETALLES DEL PRODUCTO</h3>
+              <button type="button" onClick={() => setEditandoProducto(null)} className="text-zinc-400 hover:text-zinc-600 text-xs font-bold font-mono">✕ CERRAR</button>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Nombre del Ítem</label>
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="border border-zinc-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-purple-400 bg-zinc-50/50 font-bold" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[8px] font-bold uppercase text-zinc-400">Precio USD</label>
+                <input type="number" step="0.01" value={editPrice} onChange={e => setEditPrice(e.target.value)} className="border border-zinc-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-purple-400 bg-zinc-50/50" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[8px] font-bold uppercase text-zinc-400">Stock Disponible</label>
+                <input type="number" value={editQty} onChange={e => setEditQty(e.target.value)} className="border border-zinc-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-purple-400 bg-zinc-50/50 text-center font-bold" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] font-bold uppercase text-zinc-400">Descripción / Nota</label>
+              <textarea rows={2} value={editDesc} onChange={e => setEditDesc(e.target.value)} className="border border-zinc-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-purple-400 bg-zinc-50/50 resize-none" />
+            </div>
+            <button type="submit" disabled={loadingForm} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-black text-[10px] uppercase py-2.5 rounded-full tracking-widest transition shadow-sm mt-2">
+              {loadingForm ? 'GUARDANDO CAMBIOS...' : '💾 GUARDAR CAMBIOS EN VIVO'}
+            </button>
+          </form>
+        </div>
+      )}
 
-      {/* PANEL DE CONTROL DE PRODUCTOS */}
+      {/* PANEL DE CONTROL DE PRODUCTOS CON BOTÓN DE EDITAR */}
       <div className="w-full max-w-4xl bg-white border border-pink-100 rounded-3xl p-6 mt-6 shadow-xs space-y-4">
         <h2 className="text-[11px] font-black uppercase tracking-wider text-purple-600 border-b border-pink-50 pb-1 font-mono">🛠️ CONTROL Y BORRADO RÁPIDO DE PRODUCTOS</h2>
         {productosAdmin.length === 0 ? (
@@ -385,12 +507,16 @@ export default function AdminPanelPremium() {
             {productosAdmin.map((prod) => {
               const padre = gosAdmin.find(g => g.id === prod.go_id);
               return (
-                <div key={prod.id} className="flex justify-between items-center p-3 border border-zinc-100 rounded-2xl bg-zinc-50/50">
-                  <div className="truncate pr-2">
+                <div key={prod.id} className="flex justify-between items-center p-3 border border-zinc-100 rounded-2xl bg-zinc-50/50 gap-2">
+                  <div className="truncate flex-1">
                     <p className="text-[12px] font-bold text-zinc-800 uppercase truncate">{prod.nombre_producto}</p>
-                    <p className="text-[9px] font-mono text-zinc-400 truncate">GO: {padre ? padre.title.toLowerCase() : 'Desconocido'} | \${prod.precio}</p>
+                    <p className="text-[9px] font-mono text-zinc-400 truncate">GO: {padre ? padre.title.toLowerCase() : 'Desconocido'} | \${prod.precio} | Qty: {prod.cantidad_disponible}</p>
+                    {prod.descripcion && <p className="text-[8px] font-sans text-purple-400 italic truncate">📌 {prod.descripcion}</p>}
                   </div>
-                  <button type="button" onClick={() => handleEliminarProducto(prod.id)} className="bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white text-[10px] font-black uppercase px-3 py-1.5 rounded-full transition-all shrink-0">Borrar</button>
+                  <div className="flex gap-1 shrink-0">
+                    <button type="button" onClick={() => iniciarEdicion(prod)} className="bg-zinc-100 border border-zinc-200 text-zinc-700 hover:bg-zinc-200 text-[9px] font-black uppercase px-2.5 py-1.5 rounded-full transition-all">Editar</button>
+                    <button type="button" onClick={() => handleEliminarProducto(prod.id)} className="bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white text-[9px] font-black uppercase px-2.5 py-1.5 rounded-full transition-all">Borrar</button>
+                  </div>
                 </div>
               )
             })}
