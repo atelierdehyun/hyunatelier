@@ -310,21 +310,21 @@ export default function Masterlist() {
 
               <div className="bg-white/80 backdrop-blur-sm border border-rose-100 p-4 rounded-2xl text-[11px] space-y-1.5 text-zinc-700 font-medium relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 text-lg">💳</div>
-                <p><strong>🏦 Banco:</strong> Banco Pichincha </p>
-                <p><strong>📄 Tipo:</strong> Cuenta de Ahorros 2213367970</p>
-                <p><strong>💵 Valor a transferir:</strong> <span className="text-pink-500 font-black">\${Number(datosUltimoClaim.precio).toFixed(2)} USD</span></p>
+                <p><strong>🏦 Banco:</strong> Banco Pichincha / Produbanco</p>
+                <p><strong>📄 Tipo:</strong> Cuenta de Ahorros</p>
+                <p><strong>💵 Valor a transferir:</strong> <span className="text-pink-500 font-black">${Number(datosUltimoClaim.precio).toFixed(2)} USD</span></p>
               </div>
 
               <a
                 href={"https://whatsapp.com" + NUMERO_WHATSAPP + "&text=" + encodeURIComponent(
-                  "¡Hola, holis! Acabo de asegurar un slot en tu hyuneatelier 🐻✨\n\n" +
+                  "¡Hola, holis! Acabo de asegurar un slot en tu web 🐻✨\n\n" +
                   "💌 *User Email (para recordatorios):* " + usuarioEmail + "\n" +
                   "📦 *Product / GO:* " + datosUltimoClaim.producto + "\n" +
                   "🪞 *Slot elegido:* " + datosUltimoClaim.slot + "\n" +
                   "💰 *Valor total:* $" + Number(datosUltimoClaim.precio).toFixed(2) + " USD\n\n" +
                   "Adjunto por aquí la fotito de mi comprobante. ¡Muchas gracias! 💗"
                 )}
-                target="_blank"
+                target="_self"
                 rel="noopener noreferrer"
                 onClick={() => setMostrarMóduloPago(false)}
                 className="w-full py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-center"
@@ -334,8 +334,8 @@ export default function Masterlist() {
             </div>
           )}
 
-          {/* PANEL CONTROL DE JOINERS GLOBAL ADMIN */}
-          {activeProducto && activeProducto.claims_integrantes && Object.keys(activeProducto.claims_integrantes).length > 0 && (
+          {/* 🔒 PROTECCIÓN TOTAL DE ADMIN: Todo este panel ahora es exclusivo para ti */}
+          {usuarioEmail === 'liahwang1853@gmail.com' && activeProducto && activeProducto.claims_integrantes && Object.keys(activeProducto.claims_integrantes).length > 0 && (
             <div className="mt-4 pt-4 border-t border-zinc-100 space-y-4">
               <div className="text-center space-y-0.5">
                 <h3 className="text-xs font-black text-zinc-800 tracking-tight uppercase">panel control de joiners 🌸</h3>
@@ -371,7 +371,7 @@ export default function Masterlist() {
 
                     <div className="w-full bg-zinc-950 text-white rounded-xl p-3 flex justify-between items-center font-mono text-[11px]">
                       <span className="text-[9px] uppercase font-bold text-zinc-400">TOTAL PEDIDO ACUMULADO:</span>
-                      <span className="font-black text-xs">\${Number(activeProducto.precio).toFixed(2)} USD</span>
+                      <span className="font-black text-xs">${Number(activeProducto.precio).toFixed(2)} USD</span>
                     </div>
                   </div>
                 );
