@@ -51,7 +51,7 @@ export default function AdminPanelPremium() {
   const [editQty, setEditQty] = useState('')
   const [editDesc, setEditDesc] = useState('')
   async function uploadImageHandler(e: React.ChangeEvent<HTMLInputElement>, targetForm: 'go' | 'prod' | 'shop') {
-    const file = e.target.files?.[0]
+    const file = e.target.files?.[0] // 🌟 CORREGIDO
     if (!file) return
     setSubiendoImagen(true)
     const fileExt = file.name.split('.').pop()
