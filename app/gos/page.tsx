@@ -4,383 +4,276 @@ import { supabase } from '../supabase'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic';
-
-// ⚙️ Número de WhatsApp de destino (Ecuador)
 const NUMERO_WHATSAPP = '593999530327';
+const correoAdmin = 'liahwang1852@gmail.com';
 
-type Go = {
-  id: number;
-  title: string;
-  status: string;
-  group_name: string;
-  imagen_general: string | null;
-}
-
+type Go = { id: number; title: string; status: string; group_name: string; imagen_general: string | null; }
 type Producto = {
-  id: number;
-  go_id: number;
-  nombre_producto: string;
-  precio: number;
-  lista_slots: string | null;
-  imagen_producto: string | null;
-  claims_integrantes: { [key: string]: string } | null;
-  due_date?: string;
-  descripcion?: string;
+  id: number; go_id: number; nombre_producto: string; precio: number; lista_slots: string | null;
+  imagen_producto: string | null; stock_slots: { [key: string]: number } | null;
+  claims_integrantes: { [key: string]: { [email: string]: number } } | null; descripcion?: string;
 }
 
 export default function Masterlist() {
   const [bandaSeleccionada, setBandaSeleccionada] = useState<'stray kids' | 'enhypen' | 'otros'>('stray kids')
-  
-  const [gos, setGos] = useState<Go[]>([])
-  const [productos, setProductos] = useState<Producto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [usuarioEmail, setUsuarioEmail] = useState('')
-  const [message, setMessage] = useState('')
-  
-  const [goSeleccionado, setGoSeleccionado] = useState<number | null>(null)
+  const [gos, setGos] = useState<Go[]>([]); const [productos, setProductos] = useState<Producto[]>([])
+  const [loading, setLoading] = useState(true); const [usuarioEmail, setUsuarioEmail] = useState('')
+  const [message, setMessage] = useState(''); const [goSeleccionado, setGoSeleccionado] = useState<number | null>(null)
   const [productoSeleccionado, setProductoSeleccionado] = useState<number | null>(null)
-  const [integranteSeleccionado, setIntegranteSeleccionado] = useState<string | null>(null)
-  const [usuarioHizoClicEnProducto, setUsuarioHizoClicEnProducto] = useState(false)
-
+  const [carrito, setCarrito] = useState<{ [integrante: string]: number }>({})
   const [mostrarMóduloPago, setMostrarMóduloPago] = useState(false)
-  const [datosUltimoClaim, setDatosUltimoClaim] = useState<{ producto: string; slot: string; precio: number } | null>(null)
-  async function inicializarPagina(keepGoId?: number | null, keepProdId?: number | null, keepBanda?: 'stray kids' | 'enhypen' | 'otros') {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user?.email) setUsuarioEmail(user.email)
-    
-    const { data: dataGos } = await supabase.from('gos').select('*').order('id', { ascending: false })
-    const { data: dataProductos } = await supabase.from('productos').select('*').order('id', { ascending: true })
-    
-    if (dataGos) setGos(dataGos)
-    if (dataProductos) setProductos(dataProductos)
-    
-    // Si venimos de un claim/cancelación, forzamos a conservar lo que el usuario estaba viendo
-    if (keepGoId !== undefined) {
-      setGoSeleccionado(keepGoId)
-      setProductoSeleccionado(keepProdId || null)
-      if (keepBanda) setBandaSeleccionada(keepBanda)
-      setLoading(false)
-      return
-    }
+  const [datosUltimoClaim, setDatosUltimoClaim] = useState<any>(null)
 
-    const queryParams = new URLSearchParams(window.location.search)
-    const urlGoId = queryParams.get('goId')
-    
-    if (urlGoId && dataGos) {
-      const idNumerico = Number(urlGoId)
-      setGoSeleccionado(idNumerico)
-      const goEncontrado = dataGos.find(g => g.id === idNumerico)
-      if (goEncontrado) {
-        const nombreGrupo = goEncontrado.group_name.toLowerCase()
-        setBandaSeleccionada((nombreGrupo === 'stray kids' || nombreGrupo === 'enhypen') ? (nombreGrupo as any) : 'otros')
-      }
-      if (dataProductos) {
-        const primerProducto = dataProductos.find(p => p.go_id === idNumerico)
-        if (primerProducto) setProductoSeleccionado(primerProducto.id)
-      }
-    } else if (dataGos && dataGos.length > 0) {
-      const primerGoSKZ = dataGos.find(g => g.group_name.toLowerCase() === 'stray kids')
-      const goInicial = primerGoSKZ || dataGos
-      if (goInicial) {
-        setGoSeleccionado(goInicial.id)
-        const gName = goInicial.group_name.toLowerCase()
-        setBandaSeleccionada((gName === 'stray kids' || gName === 'enhypen') ? (gName as any) : 'otros')
-        if (dataProductos) {
-          const primerProducto = dataProductos.find(p => p.go_id === goInicial.id)
-          if (primerProducto) setProductoSeleccionado(primerProducto.id)
-        }
-      }
-    }
-    setLoading(false)
+  // ⚡ NUEVOS ESTADOS OBLIGATORIOS PARA EL CARRITO Y PROOFS
+  const [abrirFormularioEnvio, setAbrirFormularioEnvio] = useState(false)
+  const [formNombre, setFormNombre] = useState('')
+  const [formInstagram, setFormInstagram] = useState('')
+  const [formTelefono, setFormTelefono] = useState('')
+  const [formCiudad, setFormCiudad] = useState('')
+  const [formDireccion, setFormDireccion] = useState('')
+  const [formMetodoEnvio, setFormMetodoEnvio] = useState('Servientrega')
+
+  async function inicializarPagina(goIdPre: number | null = null, prodIdPre: number | null = null, bandaAct: string = 'stray kids') {
+    try {
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user?.email) setUsuarioEmail(session.user.email)
+      const { data: dGos } = await supabase.from('gos').select('*')
+      const { data: dProds } = await supabase.from('productos').select('*')
+      setGos(dGos || []); setProductos(dProds || [])
+      if (goIdPre) setGoSeleccionado(goIdPre)
+      if (prodIdPre) setProductoSeleccionado(prodIdPre)
+    } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
   useEffect(() => { inicializarPagina() }, [])
-  const slots = (t: string | null) => t ? t.split(',').map(s => s.trim()) : ['Slot Único']
 
-  async function handleClaim(producto: Producto, integrante: string) {
-    if (!usuarioEmail) return setMessage('Inicia sesión primero, unnie/oppa 🎀')
-    const actuales = producto.claims_integrantes || {}
-    if (actuales[integrante]) return setMessage('Ya reclamado por otra personita 😭')
-    
-    const limite = new Date()
-    limite.setDate(limite.getDate() + 2) 
-    const nuevos = { ...actuales, [integrante]: usuarioEmail }
-    
-    const { error } = await supabase.from('productos').update({ 
-      claims_integrantes: nuevos, due_date: limite.toISOString()
-    }).eq('id', producto.id)
-    
-    if (!error) { 
-      setDatosUltimoClaim({ producto: producto.nombre_producto, slot: integrante, precio: producto.precio })
-      setIntegranteSeleccionado(null)
-      setMostrarMóduloPago(true) 
-      // Refrescamos pasando la posición actual para no mover de banda al cliente
-      inicializarPagina(goSeleccionado, producto.id, bandaSeleccionada) 
-    }
-  }
-
-  async function handleCancelarClaim(producto: Producto, slotName: string) {
-    const confirmar = window.confirm(`¿Estás segura de que quieres liberar el slot "${slotName}"? 🌸`);
-    if (!confirmar) return;
-
-    const actuales = { ...producto.claims_integrantes };
-    delete actuales[slotName]; 
-
-    const { error } = await supabase.from('productos').update({ claims_integrantes: actuales }).eq('id', producto.id);
-
-    if (!error) {
-      alert('¡Slot liberado con éxito! 🔓');
-      // Refrescamos manteniendo la posición exacta de administración
-      inicializarPagina(goSeleccionado, producto.id, bandaSeleccionada);
-    } else {
-      alert('Hubo un error al cancelar: ' + error.message);
-    }
-  }
-  const gosFiltradosPorBanda = gos.filter(g => {
-    const nombre = g.group_name.toLowerCase()
-    if (bandaSeleccionada === 'stray kids') return nombre === 'stray kids'
-    if (bandaSeleccionada === 'enhypen') return nombre === 'enhypen'
-    return nombre !== 'stray kids' && nombre !== 'enhypen'
+  const gosFiltrados = gos.filter(g => {
+    const n = g.group_name.toLowerCase()
+    return bandaSeleccionada === 'stray kids' ? n === 'stray kids' : bandaSeleccionada === 'enhypen' ? n === 'enhypen' : (n !== 'stray kids' && n !== 'enhypen')
   })
-
   const activeGo = gos.find(g => g.id === goSeleccionado)
   const productosDelGo = productos.filter(p => p.go_id === goSeleccionado)
   const activeProducto = productos.find(p => p.id === productoSeleccionado)
 
-  const imagenAExhibir = usuarioHizoClicEnProducto && activeProducto?.imagen_producto
-    ? activeProducto.imagen_producto 
-    : activeGo?.imagen_general
-
-  const handleCambioGo = (id: number) => {
-    setGoSeleccionado(id)
-    const primerProd = productos.find(p => p.go_id === id)
-    setProductoSeleccionado(primerProd ? primerProd.id : null)
-    setIntegranteSeleccionado(null)
-    setUsuarioHizoClicEnProducto(false)
+  const handleCambiarCantidadCarrito = (int: string, cambio: number, stockDisp: number) => {
+    const nuevaCant = (carrito[int] || 0) + cambio
+    if (nuevaCant < 0 || nuevaCant > stockDisp) return
+    setMessage(''); setCarrito(prev => ({ ...prev, [int]: nuevaCant }))
+  };
+  // Al presionar el botón de Checkout, primero validamos el carrito y abrimos el formulario de envío
+  function handleGatillarCheckout() {
+    if (!usuarioEmail) return setMessage('Inicia sesión primero para realizar tu reserva 🎀')
+    if (!activeProducto) return;
+    const items = Object.entries(carrito).filter(([_, c]) => c > 0)
+    if (items.length === 0) return setMessage('Añade slots al carrito 🐻')
     setMessage('')
+    setAbrirFormularioEnvio(true) // Despliega la interfaz de recolección de datos
   }
 
-  const handleCambioBandaPestana = (banda: 'stray kids' | 'enhypen' | 'otros') => {
-    setBandaSeleccionada(banda)
-    const primerGoDeEsaBanda = gos.find(g => {
-      const name = g.group_name.toLowerCase()
-      if (banda === 'stray kids') return name === 'stray kids'
-      if (banda === 'enhypen') return name === 'enhypen'
-      return name !== 'stray kids' && name !== 'enhypen'
-    })
-    if (primerGoDeEsaBanda) {
-      handleCambioGo(primerGoDeEsaBanda.id)
-    } else {
-      setGoSeleccionado(null)
-      setProductoSeleccionado(null)
+  async function handleProcesarCompraFinal(e: React.FormEvent) {
+    e.preventDefault()
+    if (!formNombre || !formInstagram || !formTelefono || !formCiudad || !formDireccion) {
+      return alert('Por favor, llena todos los datos de envío e Instagram para tus proofs ya que el proof es necesario SI O SI al momento de comprar conmigo🧸🌸')
     }
+    
+    setLoading(true)
+    const items = Object.entries(carrito).filter(([_, c]) => c > 0)
+    const nStock = { ...(activeProducto?.stock_slots || {}) }, nClaims = { ...(activeProducto?.claims_integrantes || {}) }
+    let txt = "", tot = 0
+
+    for (const [int, cant] of items) {
+      if (cant > (nStock[int] || 0)) { setLoading(false); return alert(`El slot de ${int} se agotó.`); }
+      nStock[int] = (nStock[int] || 0) - cant
+      if (!nClaims[int]) nClaims[int] = {}
+      nClaims[int][usuarioEmail] = (nClaims[int][usuarioEmail] || 0) + cant
+      txt += `• ${int} (Cant: ${cant})\n`
+      tot += (activeProducto?.precio || 0) * cant
+    }
+
+    // Actualizamos el inventario de slots en la tabla productos
+    const { error: e1 } = await supabase.from('productos').update({ 
+      stock_slots: nStock, claims_integrantes: nClaims, due_date: new Date(Date.now() + 172800000).toISOString() 
+    }).eq('id', activeProducto!.id)
+    
+    if (e1) { setLoading(false); return alert('Error al guardar stock 😭'); }
+
+    // 🚀 INYECCIÓN: Guardamos la orden completa vinculando la ubicación y el instagram del cliente
+    await supabase.from('pedidos').insert([{ 
+      usuario_email: usuarioEmail, 
+      producto_nombre: activeProducto!.nombre_producto, 
+      desglose_slots: txt, 
+      total_pagar: tot, 
+      estado_pago: 'Pendiente Comprobante',
+      detalles: `IG: @${formInstagram} | Tlf: ${formTelefono} | Nombre: ${formNombre} | Ciudad: ${formCiudad} | Dir: ${formDireccion} | Envío: ${formMetodoEnvio}`
+    }])
+
+    setDatosUltimoClaim({ producto: activeProducto!.nombre_producto, desglose: txt, total: tot, ig: formInstagram, tlf: formTelefono, name: formNombre, ciudad: formCiudad, dir: formDireccion, envio: formMetodoEnvio })
+    setCarrito({}); setAbrirFormularioEnvio(false); setMostrarMóduloPago(true)
+    inicializarPagina(goSeleccionado, activeProducto!.id, bandaSeleccionada)
   }
 
-  if (loading) {
-    return <div className="min-h-screen bg-[#FFF0F4] flex items-center justify-center font-mono text-xs text-pink-400">✧ loading_database.sys ... 📑🌸</div>
+  async function handleCancelarClaimAdmin(prod: Producto, int: string, mail: string) {
+    const nClaims = { ...prod.claims_integrantes }, nStock = { ...prod.stock_slots }
+    if (nClaims[int]?.[mail]) {
+      nStock[int] = (nStock[int] || 0) + nClaims[int][mail]; delete nClaims[int][mail]
+      if (Object.keys(nClaims[int]).length === 0) delete nClaims[int]
+    }
+    const { error } = await supabase.from('productos').update({ claims_integrantes: nClaims, stock_slots: nStock }).eq('id', prod.id)
+    if (!error) { setMessage(`Slot liberado.`); inicializarPagina(goSeleccionado, prod.id, bandaSeleccionada) }
   }
+
+  const totalLocal = Object.entries(carrito).reduce((acc, [_, c]) => acc + (c * (activeProducto?.precio || 0)), 0)
+  if (loading) return <div className="min-h-screen bg-[#FFF0F4] flex items-center justify-center font-mono text-pink-400">✧ loading_database.sys ... 🌸</div>
+
   return (
-    <div className="min-h-screen bg-white font-sans text-zinc-900 w-full flex flex-col items-center pb-12">
-      
-      {/* Header */}
-      <div className="w-full max-w-6xl px-6 pt-6 flex justify-between items-center">
-        <Link href="/" className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-zinc-600 transition">
-          🗂️ ⏤ back to desktop
-        </Link>
-        <span className="text-[9px] bg-zinc-900 text-white font-mono px-3 py-1 rounded-full">
-          👤 {usuarioEmail || 'Invitado'}
-        </span>
+    <div className="min-h-screen bg-white font-sans text-zinc-900 w-full flex flex-col items-center pb-12 px-4">
+      <div className="w-full max-w-4xl pt-4 flex justify-between items-center border-b pb-3">
+        <Link href="/" className="text-xs font-bold text-zinc-400 uppercase tracking-wider">🗂️ back to desktop</Link>
+        <span className="text-xs bg-zinc-900 text-white font-mono px-3 py-1 rounded-full">👤 {usuarioEmail || 'Invitado'}</span>
       </div>
 
-      {/* Categorías */}
-      <div className="w-full max-w-6xl px-6 mt-6">
-        <div className="text-[9px] font-mono font-black uppercase text-zinc-400 tracking-widest mb-1.5">select k-pop group category</div>
-        <div className="flex gap-2 border-b border-zinc-100 pb-3">
-          <button type="button" onClick={() => handleCambioBandaPestana('stray kids')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'stray kids' ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>stray kids</button>
-          <button type="button" onClick={() => handleCambioBandaPestana('enhypen')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'enhypen' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>enhypen</button>
-          <button type="button" onClick={() => handleCambioBandaPestana('otros')} className={`px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all border ${bandaSeleccionada === 'otros' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'}`}>otros grupos</button>
+      {!goSeleccionado ? (
+        <div className="w-full max-w-4xl mt-4">
+          <div className="flex gap-2 mb-4">
+            {(['stray kids', 'enhypen', 'otros'] as const).map(b => (
+              <button key={b} type="button" onClick={() => { setBandaSeleccionada(b); setCarrito({}); }} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase border ${bandaSeleccionada === b ? 'bg-zinc-950 text-white border-zinc-950' : 'bg-zinc-50 text-zinc-500'}`}>{b}</button>
+            ))}
+          </div>
+          <div className="text-[10px] font-bold uppercase text-zinc-400 mb-2 border-b pb-1">📂 Selecciona un Catálogo ({bandaSeleccionada})</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {gosFiltrados.map(g => (
+              <button key={g.id} type="button" onClick={() => { setGoSeleccionado(g.id); const firstP = productos.find(p => p.go_id === g.id); setProductoSeleccionado(firstP ? firstP.id : null); setCarrito({}); setMostrarMóduloPago(false); }} className="p-3 rounded-2xl border text-left bg-zinc-50/40 hover:border-zinc-400 flex flex-col justify-between">
+                <div className="w-full h-32 bg-[#EEF7FC] rounded-xl flex items-center justify-center overflow-hidden mb-2 border border-zinc-100">
+                  {g.imagen_general ? <img src={g.imagen_general} alt="GO" className="max-h-full max-w-full object-contain" /> : <span className="text-[10px] text-zinc-300 font-bold">NO PHOTO</span>}
+                </div>
+                <p className="text-xs font-black uppercase text-zinc-900 line-clamp-2">{g.title.toLowerCase()}</p>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* Grid Principal */}
-      <div className="w-full max-w-6xl px-6 mt-6 grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-        
-        {/* PANEL IZQUIERDO */}
-        <div className="md:col-span-6 flex flex-col gap-4">
-          <div className="relative w-full bg-[#EEF7FC] rounded-3xl min-h-[480px] p-8 flex flex-col justify-between overflow-hidden border border-zinc-100">
-            <div className="flex-1 flex items-center justify-center">
-              {imagenAExhibir ? (
-                <img src={imagenAExhibir} alt="Preview" className="max-h-[340px] w-auto object-contain rounded-2xl drop-shadow-md transition-all duration-300" />
-              ) : (
-                <div className="text-zinc-300 font-black text-3xl tracking-tighter select-none">NO IMAGE</div>
-              )}
-            </div>
-            <div className="space-y-1.5 mt-4">
-              <div className="flex gap-2 text-[9px] uppercase font-black tracking-wider">
-                <span className="bg-white px-2 py-0.5 rounded border border-zinc-200 text-zinc-700">{activeGo?.status}</span>
-                <span className="bg-[#FFF0F4] text-pink-500 px-2 py-0.5 rounded border border-rose-200">{activeGo?.group_name}</span>
+      ) : (
+        <div className="w-full max-w-4xl mt-4 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          <div className="md:col-span-5 flex flex-col gap-3">
+            <button type="button" onClick={() => { setGoSeleccionado(null); setProductoSeleccionado(null); setCarrito({}); setMostrarMóduloPago(false); }} className="w-full py-2 bg-zinc-100 text-zinc-700 font-bold text-xs uppercase rounded-xl border border-zinc-200 text-center">⬅️ Ver otros catálogos</button>
+            <div className="bg-[#F8FAFC] rounded-2xl p-4 border flex flex-col gap-3">
+              <div className="w-full h-48 bg-white rounded-xl flex items-center justify-center p-2 border">
+                <img src={activeProducto?.imagen_producto || activeGo?.imagen_general || ''} alt="Preview" className="max-h-full object-contain rounded-lg shadow-xs" />
               </div>
-              <h2 className="text-2xl font-black tracking-tight text-zinc-900 uppercase">{activeGo?.title}</h2>
-              
-              {/* DESCRIPCIÓN DINÁMICA */}
-              {usuarioHizoClicEnProducto && activeProducto?.descripcion && (
-                <p className="text-xs text-zinc-600 bg-white/70 backdrop-blur-sm p-3 rounded-xl border border-zinc-200/50 mt-1 font-medium whitespace-pre-line">
-                  {activeProducto.descripcion}
-                </p>
-              )}
-
-              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pt-1">
-                {usuarioHizoClicEnProducto && activeProducto ? `📦 Viendo ítem: ${activeProducto.nombre_producto}` : '✿ Viendo: Portada General del GO'}
-              </p>
+              <div>
+                <span className="bg-zinc-900 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase">{activeGo?.status || 'OPEN'}</span>
+                <h3 className="text-sm font-black text-zinc-900 uppercase mt-1">{activeGo?.title}</h3>
+                {activeProducto?.descripcion && <p className="text-[11px] text-zinc-600 bg-white p-2.5 rounded-lg border mt-1.5 whitespace-pre-line">{activeProducto.descripcion}</p>}
+              </div>
             </div>
+            {message && <p className="text-xs font-bold text-center text-pink-500 bg-pink-50 py-1.5 rounded-xl border border-pink-100">{message}</p>}
           </div>
-          {message && <p className="text-[10px] font-bold text-center text-pink-500 bg-pink-50/50 py-2 rounded-xl border border-pink-100">{message}</p>}
-        </div>
-        {/* PANEL DERECHO INTERACTIVO */}
-        <div className="md:col-span-6 flex flex-col gap-5">
-          
-          <div className="text-[10px] font-mono font-black uppercase text-zinc-400 tracking-wider border-b pb-1 mb-1">
-            📂 Órdenes grupales activas ({bandaSeleccionada})
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto pb-2">
-            {gosFiltradosPorBanda.length === 0 ? (
-              <span className="text-[10px] font-mono text-zinc-400 py-1">No hay másterlists de este grupo por el momento 🍰</span>
-            ) : (
-              gosFiltradosPorBanda.map(g => (
-                <button type="button" key={g.id} onClick={() => handleCambioGo(g.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 border ${goSeleccionado === g.id ? 'bg-pink-500 text-white border-pink-500 shadow-xs' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'}`}>{g.title.toLowerCase()}</button>
-              ))
-            )}
-          </div>
-
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mt-1">Products / Items</div>
-          <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-            {productosDelGo.map(prod => {
-              const isSelected = productoSeleccionado === prod.id
-              return (
-                <button
-                  type="button"
-                  key={prod.id}
-                  onClick={() => { setProductoSeleccionado(prod.id); setIntegranteSeleccionado(null); setUsuarioHizoClicEnProducto(true); }}
-                  className={`w-full py-2.5 px-5 border rounded-full text-xs font-bold tracking-wide transition-all uppercase text-center ${isSelected ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm' : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-400'}`}
-                >
-                  {prod.nombre_producto} — \${prod.precio} USD
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mt-1">Options</div>
-          {activeProducto && (
-            <div className="grid grid-cols-2 gap-2">
-              {slots(activeProducto.lista_slots).map(int => {
-                const dueño = activeProducto.claims_integrantes?.[int]
-                const isCurrentSelection = integranteSeleccionado === int
-                return (
-                  <button 
-                    type="button" 
-                    key={int} 
-                    disabled={!!dueño} 
-                    onClick={() => setIntegranteSeleccionado(int)} 
-                    className={`py-3 px-4 rounded-2xl text-xs font-black uppercase border transition-all text-center ${dueño ? 'bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed line-through' : isCurrentSelection ? 'bg-pink-500 text-white border-pink-500 shadow-xs' : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:border-zinc-400'}`}
-                  >
-                    {int} {dueño ? '🔓' : ''}
+          <div className="md:col-span-7 flex flex-col gap-4">
+            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b pb-1">Items Disponibles</div>
+            {!productoSeleccionado ? (
+              <div className="flex flex-col gap-1.5">
+                {productosDelGo.map(p => (
+                  <button key={p.id} type="button" onClick={() => { setProductoSeleccionado(p.id); setCarrito({}); }} className="w-full p-3 rounded-xl border text-xs font-black uppercase bg-white flex justify-between items-center hover:border-zinc-400">
+                    <span>📦 {p.nombre_producto.toLowerCase()}</span><span>${p.precio} USD</span>
                   </button>
-                )
-              })}
-            </div>
-          )}
-
-          {integranteSeleccionado && activeProducto && (
-            <button
-              type="button"
-              onClick={() => handleClaim(activeProducto, integranteSeleccionado)}
-              className="mt-2 w-full py-4 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-md transition-all"
-            >
-              Confirmar Reclamo: {integranteSeleccionado}
-            </button>
-          )}
-          {/* DATOS BANCARIOS Y REDIRECCIÓN DIRECTA A WHATSAPP */}
-          {mostrarMóduloPago && datosUltimoClaim && (
-            <div className="mt-4 p-6 bg-[#FFF0F4] border border-rose-200 rounded-3xl space-y-4 shadow-xs animate-fade">
-              <div className="text-center">
-                <h4 className="text-sm font-black text-pink-500 uppercase tracking-wide">✨ ¡Yay! Slot apartado con éxito 🫧</h4>
-                <p className="text-[11px] text-zinc-500 font-medium mt-1">Realiza tu transferencia para que no expire tu reserva en 48h ⏰</p>
+                ))}
               </div>
-
-              <div className="bg-white/80 backdrop-blur-sm border border-rose-100 p-4 rounded-2xl text-[11px] space-y-1.5 text-zinc-700 font-medium relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-2 text-lg">💳</div>
-                <p><strong>🏦 Banco:</strong> Banco Pichincha / Produbanco</p>
-                <p><strong>📄 Tipo:</strong> Cuenta de Ahorros</p>
-                <p><strong>💵 Valor a transferir:</strong> <span className="text-pink-500 font-black">${Number(datosUltimoClaim.precio).toFixed(2)} USD</span></p>
-              </div>
-
-              <a
-                href={"https://whatsapp.com" + NUMERO_WHATSAPP + "&text=" + encodeURIComponent(
-                  "¡Hola, holis! Acabo de asegurar un slot en tu web 🐻✨\n\n" +
-                  "💌 *User Email (para recordatorios):* " + usuarioEmail + "\n" +
-                  "📦 *Product / GO:* " + datosUltimoClaim.producto + "\n" +
-                  "🪞 *Slot elegido:* " + datosUltimoClaim.slot + "\n" +
-                  "💰 *Valor total:* $" + Number(datosUltimoClaim.precio).toFixed(2) + " USD\n\n" +
-                  "Adjunto por aquí la fotito de mi comprobante. ¡Muchas gracias! 💗"
+            ) : (
+              <div className="flex justify-between items-center bg-zinc-950 text-white p-3 rounded-xl shadow-xs">
+                <span className="text-xs font-black uppercase truncate">📦 {activeProducto?.nombre_producto.toLowerCase()} — ${activeProducto?.precio} USD</span>
+                {productosDelGo.length > 1 && (
+                  <button type="button" onClick={() => { setProductoSeleccionado(null); setCarrito({}); setMostrarMóduloPago(false); }} className="text-[10px] bg-white text-zinc-900 font-bold px-2.5 py-1 rounded-md shrink-0">🔄 Cambiar Ítem</button>
                 )}
-                target="_self"
-                rel="noopener noreferrer"
-                onClick={() => setMostrarMóduloPago(false)}
-                className="w-full py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-center"
-              >
-                💬 ¡Enviar comprobante por WhatsApp! 🍰
-              </a>
-            </div>
-          )}
-
-          {/* 🔒 PROTECCIÓN TOTAL DE ADMIN: Todo este panel ahora es exclusivo para ti */}
-          {usuarioEmail === 'liahwang1853@gmail.com' && activeProducto && activeProducto.claims_integrantes && Object.keys(activeProducto.claims_integrantes).length > 0 && (
-            <div className="mt-4 pt-4 border-t border-zinc-100 space-y-4">
-              <div className="text-center space-y-0.5">
-                <h3 className="text-xs font-black text-zinc-800 tracking-tight uppercase">panel control de joiners 🌸</h3>
-                <p className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider">Resumen unificado de la base de datos</p>
               </div>
+            )}
 
-              {Object.keys(activeProducto.claims_integrantes).map((slotName, idx) => {
-                const correoJoiner = activeProducto.claims_integrantes?.[slotName] || 'Sin correo';
-                const fechaLimite = activeProducto.due_date ? new Date(activeProducto.due_date).toLocaleDateString() : '⏳';
-
-                return (
-                  <div key={idx} className="w-full bg-white border border-zinc-100 rounded-3xl p-4 shadow-xs space-y-3">
-                    <div className="flex justify-between items-center border-b border-zinc-50 pb-2">
-                      <span className="text-[8px] font-black uppercase tracking-wider bg-purple-600 text-white px-2 py-0.5 rounded-sm">
-                        joiner activo
-                      </span>
-                      <span className="text-[11px] font-mono font-bold text-zinc-500">
-                        {correoJoiner}
-                      </span>
-                    </div>
-                    <div className="text-[11px] font-bold text-zinc-700 flex justify-between items-center">
-                      <span>COMPONENTE: {slotName}</span>
-                      <span className="text-[9px] font-mono text-zinc-400">Límite: {fechaLimite}</span>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleCancelarClaim(activeProducto, slotName)}
-                      className="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[10px] uppercase rounded-lg border border-rose-200 transition-all"
-                    >
-                      🗑️ Liberar / Cancelar este Slot
-                    </button>
-
-                    <div className="w-full bg-zinc-950 text-white rounded-xl p-3 flex justify-between items-center font-mono text-[11px]">
-                      <span className="text-[9px] uppercase font-bold text-zinc-400">TOTAL PEDIDO ACUMULADO:</span>
-                      <span className="font-black text-xs">${Number(activeProducto.precio).toFixed(2)} USD</span>
-                    </div>
+            {activeProducto && productoSeleccionado && !abrirFormularioEnvio && (
+              <div className="bg-zinc-50 p-3.5 rounded-2xl border space-y-3">
+                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b pb-1">Elige tus Slots de Integrantes</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
+                  {activeProducto.lista_slots?.split(',').map(s => s.trim()).map(int => {
+                    const totalC = activeProducto.claims_integrantes?.[int] ? Object.values(activeProducto.claims_integrantes[int]).reduce((a, b) => a + b, 0) : 0
+                    const stockD = Math.max(0, (activeProducto.stock_slots?.[int] ?? 0) - totalC)
+                    return (
+                      <div key={int} className="bg-white p-2.5 rounded-xl border flex justify-between items-center shadow-2xs">
+                        <div><p className="text-xs font-black uppercase text-zinc-800">{int}</p><p className="text-[9px] font-mono text-zinc-400">Disp: {stockD}</p></div>
+                        {stockD === 0 ? <span className="text-[9px] text-zinc-400 font-bold bg-zinc-50 border px-2 py-0.5 rounded">🔒 OCUPADO</span> : (
+                          <div className="flex items-center gap-1.5 bg-zinc-50 p-0.5 rounded border">
+                            <button type="button" onClick={() => handleCambiarCantidadCarrito(int, -1, stockD)} className="w-5 h-5 font-bold hover:bg-zinc-200 rounded text-xs flex items-center justify-center">-</button>
+                            <span className="font-bold font-mono text-zinc-800 text-xs w-4 text-center">{carrito[int] || 0}</span>
+                            <button type="button" onClick={() => handleCambiarCantidadCarrito(int, 1, stockD)} className="w-5 h-5 font-bold hover:bg-zinc-200 rounded text-xs flex items-center justify-center">+</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {totalLocal > 0 && (
+                  <div className="bg-zinc-900 text-white rounded-xl p-3 flex flex-col gap-2 shadow-xs">
+                    <div className="flex justify-between items-center text-xs font-mono"><span>TOTAL PEDIDO:</span><span className="font-black text-pink-400">${totalLocal.toFixed(2)} USD</span></div>
+                    <button type="button" onClick={handleGatillarCheckout} className="w-full py-2.5 bg-pink-500 hover:bg-pink-600 rounded-lg text-xs font-black uppercase tracking-wider">👑 Reservar y llenar datos</button>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+            {/* 📝 FORMULARIO DE ENVÍO E INSTAGRAM */}
+            {abrirFormularioEnvio && (
+              <form onSubmit={handleProcesarCompraFinal} className="bg-white border border-pink-100 p-5 rounded-2xl space-y-3 shadow-sm animate-fade">
+                <div className="border-b pb-1 flex justify-between items-center"><h3 className="text-xs font-black text-purple-600 uppercase font-mono">📋 DATOS DE DESPACHO Y PROOFS</h3><button type="button" onClick={() => setAbrirFormularioEnvio(false)} className="text-[10px] text-zinc-400 font-bold">CANCELAR</button></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Nombre Completo</label><input type="text" placeholder="Ej: Lia Hwang" required value={formNombre} onChange={e => setFormNombre(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+                  <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Instagram (Sin @)</label><input type="text" placeholder="Ej: hyun_atelier" required value={formInstagram} onChange={e => setFormInstagram(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50 font-bold text-purple-600" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Teléfono / WhatsApp</label><input type="tel" placeholder="Ej: 0999530327" required value={formTelefono} onChange={e => setFormTelefono(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+                  <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Ciudad / Provincia</label><input type="text" placeholder="Ej: Quito" required value={formCiudad} onChange={e => setFormCiudad(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+                </div>
+                <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Dirección Domicilio</label><input type="text" placeholder="Calles principales y referencia" required value={formDireccion} onChange={e => setFormDireccion(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+                <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Método de Envío</label><select value={formMetodoEnvio} onChange={e => setFormMetodoEnvio(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50 font-semibold"><option value="Servientrega a Domicilio">🚚 Servientrega a Domicilio</option><option value="Retiro Físico en Oficina">🍰 Retiro Físico en Cumbayá</option></select></div>
+                <button type="submit" className="w-full py-2.5 bg-zinc-950 text-white font-black text-xs uppercase tracking-widest rounded-xl mt-1">🔒 Confirmar Reserva de Slots</button>
+              </form>
+            )}
+            {/* MÓDULO DE DATOS BANCARIOS */}
+            {mostrarMóduloPago && datosUltimoClaim && (
+              <div className="p-4 bg-[#FFF0F4] border border-rose-200 rounded-xl space-y-2">
+                <div className="bg-white p-3 rounded-lg text-xs space-y-1 text-zinc-700 border">
+                  <p><strong>🏦 Cuenta de Ahorros:</strong> Banco Pichincha solamente</p>
+                  <p><strong>💵 Valor Total a transferir:</strong> <span className="text-pink-500 font-black">${datosUltimoClaim.total.toFixed(2)} USD</span></p>
+                </div>
+                <a href={`https://whatsapp.com{NUMERO_WHATSAPP}&text=${encodeURIComponent(
+                  `¡Hola holis! Acabo de apartar slots en la web 🐻✨\n\n` +
+                  `💌 *Joiner:* ${formNombre} (@${datosUltimoClaim.ig})\n` +
+                  `📱 *Contacto:* ${datosUltimoClaim.tlf}\n` +
+                  `📍 *Destino:* ${datosUltimoClaim.ciudad} — ${datosUltimoClaim.dir}\n` +
+                  `🚚 *Método:* ${datosUltimoClaim.envio}\n\n` +
+                  `📋 *Desglose de slots:*\n${datosUltimoClaim.desglose}` +
+                  `💰 *Total a pagar:* $${datosUltimoClaim.total.toFixed(2)} USD\n\n` +
+                  `Adjunto mi comprobante por aquí. ¡Muchas gracias! 💗`
+                )}`} target="_blank" rel="noopener noreferrer" onClick={() => setMostrarMóduloPago(false)} className="w-full py-2 bg-emerald-500 text-white font-black text-xs uppercase rounded-lg text-center block">💬 ¡Enviar Comprobante e Info a WhatsApp! 🍰</a>
+              </div>
+            )}
 
+            {/* Candado de Administrador en minúsculas */}
+            {usuarioEmail === correoAdmin && activeProducto && activeProducto.claims_integrantes && Object.keys(activeProducto.claims_integrantes).length > 0 && (
+              <div className="mt-2 pt-3 border-t space-y-1.5">
+                <div className="text-center"><h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest font-mono">Panel Control Admin 👑</h3></div>
+                {Object.keys(activeProducto.claims_integrantes).map((sName) => 
+                  Object.entries(activeProducto.claims_integrantes?.[sName] || {}).map(([mail, cant]) => {
+                    if (usuarioEmail !== correoAdmin) return null;
+                    return (
+                      <div key={`${sName}-${mail}`} className="bg-white border rounded-xl p-2.5 flex justify-between items-center text-xs shadow-2xs">
+                        <div><p className="font-bold uppercase text-zinc-800">Slot: {sName}</p><p className="text-zinc-500 font-mono text-[10px]">{mail} ({cant} und)</p></div>
+                        <button type="button" onClick={() => handleCancelarClaimAdmin(activeProducto, sName, mail)} className="text-[10px] bg-rose-50 text-rose-600 font-bold px-2.5 py-1 rounded border border-rose-200 uppercase hover:bg-rose-100 transition-all shrink-0">Liberar</button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

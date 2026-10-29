@@ -1,340 +1,192 @@
-'use client';
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '../supabase'
+import Link from 'next/link'
 
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import { supabase } from '../supabase'; // Conexión a tu Supabase
+export const dynamic = 'force-dynamic';
+const NUMERO_WHATSAPP = '593999530327';
 
-// 🏷️ PRECIOS DE ENVÍO CONFIGURABLES
+// Precios de envío configurables que tenías en tu código original
 const PRECIOS_ENVIO = {
   quito: 3.50,
   provincia: 6.50,
   peru: 0.00
 };
 
-interface Producto {
+interface ProductoShop {
   id: number;
-  nombre: string;
-  precio: string; // Ejemplo de Supabase: "$15.00" o "15"
-  tag: string;
-  imagen: string;
-  grupo: string;
-  integrante: string;
-  stock: number; 
+  nombre_producto: string;
+  precio: number;
+  descripcion: string | null;
+  estado_pago: string; // 'INSTOCK' o 'SOLD OUT'
+  due_date: string; // Aquí guardamos el grupo/categoría (stray kids, enhypen, otros)
+  imagen_producto: string | null;
+  cantidad_disponible: number;
 }
 
-export default function Leftovers() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false); 
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [grupoFiltro, setGrupoFiltro] = useState<string>('todos');
-  const [selectedProd, setSelectedProd] = useState<Producto | null>(null);
-  
-  // 🛒 Carrito y datos de entrega extendidos
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    social: '', 
-    qty: 1, 
-    address: '', 
-    shippingOption: 'quito' 
-  });
-  
-  const [orderStep, setOrderStep] = useState<'browse' | 'checkout' | 'auth_required' | 'success'>('browse');
+export default function AtelierShop() {
+  const [productos, setProductos] = useState<ProductoShop[]>([])
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<string>('TODOS')
+  const [loading, setLoading] = useState(true)
+  const [usuarioEmail, setUsuarioEmail] = useState('')
+  const [message, setMessage] = useState('')
 
-  // 🔑 SESIÓN EN TIEMPO REAL VIA SUPABASE
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsLoggedIn(!!session);
-    });
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session);
-    });
-  }, []);
+  // Formulario rápido para checkout directo de la mercancía física
+  const [mostrarModalCompra, setMostrarModalCompra] = useState(false)
+  const [productoAComprar, setProductoAComprar] = useState<ProductoShop | null>(null)
+  const [formNombre, setFormNombre] = useState('')
+  const [formInstagram, setFormInstagram] = useState('')
+  const [formTelefono, setFormTelefono] = useState('')
+  const [formCiudad, setFormCiudad] = useState('')
+  const [formDireccion, setFormDireccion] = useState('')
+  const [formMetodoEnvio, setFormMetodoEnvio] = useState('quito')
+  const [datosExito, setDatosExito] = useState<any>(null)
 
-  // 📡 CONEXIÓN A TU TABLA DE PRODUCTOS
-  useEffect(() => {
-    async function descargarProductos() {
-      const { data } = await supabase
-        .from('productos')
-        .select('*')
-        .order('id', { ascending: false });
-
-      if (data) {
-        setProductos(data);
-      }
-    }
-    descargarProductos();
-  }, []);
-
-  const handleOpenOrder = (prod: Producto) => {
-    setSelectedProd(prod);
-    setFormData({ name: '', social: '', qty: 1, address: '', shippingOption: 'quito' }); 
-    if (!isLoggedIn) {
-      setOrderStep('auth_required');
-    } else {
-      setOrderStep('checkout');
-    }
-  };
-
-  // 🧮 LÓGICA MATEMÁTICA DE PRECIOS AUTOMÁTICA
-  const obtenerPrecioNumerico = (precioStr: string): number => {
-    const numero = parseFloat(precioStr.replace(/[^0-9.]/g, ''));
-    return isNaN(numero) ? 0 : numero;
-  };
-
-  const precioProducto = selectedProd ? obtenerPrecioNumerico(selectedProd.precio) : 0;
-  const costoEnvio = PRECIOS_ENVIO[formData.shippingOption as keyof typeof PRECIOS_ENVIO] || 0;
-  const subtotal = precioProducto * formData.qty;
-  const totalPagar = subtotal + costoEnvio;
-  const handleWhatsAppRedirect = async () => {
-    if (!selectedProd) return;
-    
-    if (selectedProd.stock <= 0) {
-      alert("Lo sentimos, este producto se encuentra agotado.");
-      return;
-    }
-
-    if (!formData.name || !formData.social || !formData.address) {
-      alert("Por favor, completa todos los campos obligatorios del formulario.");
-      return;
-    }
-
+  async function cargarTienda() {
     try {
-      // 🔑 1. OBTENER EL EMAIL DEL USUARIO LOGUEADO
-      const { data: { session } } = await supabase.auth.getSession();
-      const emailUsuario = session?.user?.email || 'anonimo@shop.com';
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user?.email) setUsuarioEmail(session.user.email)
 
-      // 📡 2. REGISTRAR LA COMPRA EN LA TABLA 'pedidos' (Para tu panel admin)
-      const { error: pedidoError } = await supabase
-        .from('pedidos')
-        .insert([
-          {
-            user_email: emailUsuario,
-            tipo_servicio: 'SHOP',
-            detalles: `${selectedProd.nombre} (Cant: ${formData.qty})`,
-            total_pagar: totalPagar,
-            estado_pago: 'pendiente',
-            fecha_limite: new Date().toISOString()
-          }
-        ]);
-
-      if (pedidoError) throw pedidoError;
-
-      // 📉 3. DESCONTAR EL STOCK EN LA TABLA 'productos'
-      const nuevoStock = selectedProd.stock - formData.qty;
-      const { error: stockError } = await supabase
-        .from('productos')
-        .update({ stock: nuevoStock >= 0 ? nuevoStock : 0 })
-        .eq('id', selectedProd.id);
-
-      if (stockError) throw stockError;
-
-      // 📋 4. MENSAJE REDACTADO Y ORGANIZADO AUTOMÁTICAMENTE PARA WHATSAPP
-      const mensaje = `¡Hola! Vengo de la web de hyunatelier ✿. Quiero confirmar mi pedido:\n\n` +
-        `📦 DETALLES DEL PEDIDO:\n` +
-        `- Producto: ${selectedProd.nombre}\n` +
-        `- Cantidad: ${formData.qty} un.\n\n` +
-        `👤 DATOS DE ENTREGA:\n` +
-        `- Nombre: ${formData.name}\n` +
-        `- Red Social: ${formData.social}\n` +
-        `- Destino: ${formData.shippingOption.toUpperCase()}\n` +
-        `- Dirección: ${formData.address}\n\n` +
-        `💳 DESGLOSE DE PAGO:\n` +
-        `- Subtotal: $${subtotal.toFixed(2)}\n` +
-        `- Envío: $${costoEnvio.toFixed(2)}\n` +
-        `- TOTAL A PAGAR: $${totalPagar.toFixed(2)}\n\n` +
-        `✨ Ya realicé la transferencia, aquí adjunto mi comprobante de pago!`;
-      
-      const telefonoTienda = "593999530327";
-      const url = `https://wa.me/${telefonoTienda}?text=${encodeURIComponent(mensaje)}`;      
-      
-      // 🚀 5. ABRIR WHATSAPP Y FINALIZAR
-      window.open(url, '_blank');
-      setOrderStep('success');
-
-      // Actualizar el estado de la lista de productos localmente
-      const { data: productosActualizados } = await supabase.from('productos').select('*').order('id', { ascending: false });
-      if (productosActualizados) setProductos(productosActualizados);
-
-    } catch (err: any) {
-      console.error("Error al procesar la orden:", err);
-      alert(`Ocurrió un problema al registrar tu pedido: ${err.message}`);
+      // 🚀 CONEXIÓN REPARADA: Leemos directo de la tabla limpia tienda_productos
+      const { data, error } = await supabase.from('tienda_productos').select('*')
+      if (error) throw error
+      setProductos(data || [])
+    } catch (e: any) {
+      console.error(e)
+      setMessage('Error cargando la tienda física 😭')
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
-  // Filtrado de K-Pop inteligente
-  const productosFiltrados = grupoFiltro === 'todos' 
-    ? productos 
-    : productos.filter(p => p.grupo?.toLowerCase() === grupoFiltro.toLowerCase());
-    return (
-      <div className="min-h-screen bg-[#FFF0F4] font-sans text-zinc-700 w-full flex flex-col items-center antialiased pb-12 px-4">
-        
-        {/* 🧭 REGRESAR AL DESKTOP */}
-        <div className="w-full max-w-xl pt-6 text-left">
-          <Link href="/" className="text-[10px] font-bold text-pink-400 uppercase tracking-widest hover:text-pink-600 transition-colors">
-            🗂️ ⏤ back to desktop
-          </Link>
+  useEffect(() => { cargarTienda() }, [])
+
+  // Filtrado inteligente por botones
+  const productosFiltrados = productos.filter(p => {
+    if (categoriaSeleccionada === 'TODOS') return true
+    return p.due_date?.toLowerCase() === categoriaSeleccionada.toLowerCase()
+  })
+  function iniciarCompraDirecta(prod: ProductoShop) {
+    if (!usuarioEmail) return alert('Por favor inicia sesión primero para comprar en la shop 🎀')
+    setProductoAComprar(prod)
+    setMostrarModalCompra(true)
+  }
+
+  async function procesarPedidoShop(e: React.FormEvent) {
+    e.preventDefault()
+    if (!productoAComprar || !formNombre || !formInstagram || !formTelefono || !formCiudad || !formDireccion) {
+      return alert('Completa todos los campos e Instagram para tus proofs de entrega 🧸🌸')
+    }
+
+    setLoading(true)
+    const nuevoStock = Math.max(0, productoAComprar.cantidad_disponible - 1)
+    const nuevoEstado = nuevoStock === 0 ? 'SOLD OUT' : productoAComprar.estado_pago
+
+    // 1. Restamos una unidad del stock en tu nueva tabla tienda_productos
+    const { error: errorStock } = await supabase.from('tienda_productos')
+      .update({ cantidad_disponible: nuevoStock, estado_pago: nuevoEstado })
+      .eq('id', productoAComprar.id)
+
+    if (errorStock) { setLoading(false); return alert('Error procesando stock de la tienda 😭'); }
+
+    const costoEnvio = PRECIOS_ENVIO[formMetodoEnvio as keyof typeof PRECIOS_ENVIO] || 0
+    const totalFinal = productoAComprar.precio + costoEnvio
+
+    // 2. Inyectamos la orden en pedidos vinculando los datos de envío
+    await supabase.from('pedidos').insert([
+      {
+        usuario_email: usuarioEmail,
+        producto_nombre: productoAComprar.nombre_producto,
+        total_pagar: totalFinal,
+        estado_pago: 'Pendiente Comprobante',
+        detalles: `IG: @${formInstagram} | Tlf: ${formTelefono} | Nombre: ${formNombre} | Ciudad: ${formCiudad} | Dir: ${formDireccion} | Envío: ${formMetodoEnvio.toUpperCase()} ($${costoEnvio})`
+      }
+    ])
+
+    setDatosExito({ producto: productoAComprar.nombre_producto, total: totalFinal, envio: formMetodoEnvio, costo: costoEnvio })
+    setMostrarModalCompra(false)
+    cargarTienda()
+  }
+  if (loading) return <div className="min-h-screen bg-[#FFF0F4] flex items-center justify-center font-mono text-zinc-400">✧ cargando_shop_stock.sys ... 🛍️</div>
+
+  return (
+    <div className="min-h-screen bg-[#FFF0F4] font-sans text-zinc-800 w-full flex flex-col items-center pb-12 p-4 antialiased">
+      <div className="w-full max-w-4xl pt-4 flex justify-between items-center border-b pb-3 border-zinc-200">
+        <Link href="/gos" className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-pink-600">🗂️ ⏤ ver masterlists</Link>
+        <span className="text-[9px] bg-zinc-950 text-white font-mono px-3 py-1 rounded-full">👤 {usuarioEmail || 'Invitado'}</span>
+      </div>
+
+      <div className="w-full max-w-4xl bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-xs mt-4 p-6 flex flex-col items-center">
+        <h1 className="text-3xl font-black tracking-tight text-zinc-900 uppercase">Hyune Atelier Shop</h1>
+        <p className="text-xs text-zinc-400 mt-1 uppercase font-semibold">Encuentra aquí merch que está lista para ser enviada o que solo requiere un solo pago, por si no deseas esperar mucho :3</p>
+
+        {/* Botones de Categorías */}
+        <div className="flex gap-1.5 bg-zinc-100 p-1 rounded-xl mt-4 border">
+          {['TODOS', 'STRAY KIDS', 'ENHYPEN', 'OTROS'].map(cat => (
+            <button key={cat} type="button" onClick={() => setCategoriaSeleccionada(cat)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${categoriaSeleccionada === cat ? 'bg-zinc-950 text-white' : 'text-zinc-500 hover:bg-zinc-200/50'}`}>{cat}</button>
+          ))}
         </div>
-  
-        {/* 💳 TARJETA CONTENEDORA ESTILO GOS */}
-        <div className="w-full max-w-xl bg-white border border-pink-100 rounded-3xl overflow-hidden shadow-[0_15px_30px_rgba(255,182,193,0.12)] mt-4 p-6 space-y-6">
-          
-          {/* ENCABEZADO */}
-          <div className="text-center space-y-1.5 border-b border-pink-50 pb-4">
-            <h1 className="text-2xl font-black tracking-tight text-zinc-700 lowercase">
-              atelier shop<span className="text-amber-400 font-serif">✿</span>
-            </h1>
-            <p className="text-[11px] text-zinc-400 leading-relaxed font-medium">
-              tu carrito de compras físico conectado en tiempo real.
-            </p>
-          </div>
-  
-          {/* 🔘 FILTROS DE BÚSQUEDA */}
-          {orderStep === 'browse' && (
-            <div className="flex flex-wrap justify-center gap-1.5 pb-2">
-              {['todos', 'stray kids', 'enhypen', 'otros'].map((grupo) => (
-                <button
-                  key={grupo}
-                  onClick={() => setGrupoFiltro(grupo)}
-                  className={`px-3 py-1 rounded-full font-mono text-[9px] uppercase font-bold tracking-wider transition-all cursor-pointer ${
-                    grupoFiltro === grupo
-                      ? 'bg-zinc-800 text-white shadow-xs'
-                      : 'bg-zinc-50 text-zinc-400 hover:text-zinc-600'
-                  }`}
-                >
-                  {grupo}
-                </button>
-              ))}
-            </div>
-          )}
-  
-          {/* 📦 GRILLA DE PRODUCTOS */}
-          {orderStep === 'browse' && (
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              {productosFiltrados.map((prod) => (
-                <div 
-                  key={prod.id} 
-                  className="bg-white border border-zinc-100 rounded-2xl p-2.5 flex flex-col justify-between shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-all duration-200 group relative"
-                >
-                  {/* Contenedor de la Imagen */}
-                  <div className="w-full aspect-square bg-zinc-50 rounded-xl overflow-hidden relative border border-zinc-100">
-                    <img src={prod.imagen} alt={prod.nombre} loading="lazy" className={`w-full h-full object-cover ${prod.stock <= 0 ? 'opacity-30 grayscale' : ''}`} />
-                    
-                    <span className="absolute top-1.5 left-1.5 bg-white/90 backdrop-blur-xs text-[7px] uppercase tracking-widest font-black px-1.5 py-0.5 rounded-full text-zinc-500 border border-zinc-100">
-                      {prod.tag}
-                    </span>
-  
-                    {/* Etiqueta Sold Out */}
-                    {prod.stock <= 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/5 select-none pointer-events-none">
-                        <span className="bg-zinc-800 text-white font-mono text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm shadow-xs">
-                          sold out
-                        </span>
-                      </div>
-                    )}
-                  </div>
-  
-                  {/* Info del Producto */}
-                  <div className="mt-2.5 space-y-1.5 flex-1 flex flex-col justify-between">
-                    <div>
-                      {prod.integrante && prod.integrante.toLowerCase() !== 'grupal' && (
-                        <span className="text-[8px] font-mono font-bold uppercase text-pink-400 tracking-wider block">
-                          ✦ {prod.integrante}
-                        </span>
-                      )}
-                      <h3 className="text-[11px] font-bold text-zinc-600 lowercase line-clamp-1">{prod.nombre}</h3>
-                    </div>
-                    <div className="flex justify-between items-center pt-1">
-                      <span className="text-xs font-black text-zinc-800">{prod.precio}</span>
-                      <button 
-                        onClick={() => handleOpenOrder(prod)}
-                        className="bg-zinc-900 text-white text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full hover:bg-pink-400 transition-all cursor-pointer"
-                      >
-                        Pedir
-                      </button>
-                    </div>
+
+        {/* GRID DE PRODUCTOS EN VIVO */}
+        <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-6">
+          {productosFiltrados.length === 0 ? (
+            <p className="text-xs font-mono text-zinc-400 text-center col-span-full py-8 border border-dashed rounded-2xl">No hay mercancía física publicada en esta categoría 🍰</p>
+          ) : (
+            productosFiltrados.map(p => (
+              <div key={p.id} className="border border-zinc-100 bg-zinc-50/40 p-3 rounded-2xl flex flex-col justify-between hover:border-zinc-300 transition-all relative">
+                <div className="w-full h-36 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-zinc-200/50 p-1 relative">
+                  {p.imagen_producto ? <img src={p.imagen_producto} alt="Item" className="max-h-full max-w-full object-contain" /> : <span className="text-[10px] text-zinc-300 font-bold">NO PIC</span>}
+                  {p.estado_pago === 'SOLD OUT' && <span className="absolute bg-zinc-950/80 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider">SOLD OUT</span>}
+                </div>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs font-black uppercase text-zinc-900 truncate leading-tight">{p.nombre_producto.toLowerCase()}</p>
+                  {p.descripcion && <p className="text-[10px] text-zinc-400 line-clamp-1 lowercase">{p.descripcion}</p>}
+                  <div className="flex justify-between items-center pt-1 border-t border-zinc-100">
+                    <span className="font-mono text-xs font-black text-zinc-900">${p.precio} USD</span>
+                    <button type="button" disabled={p.estado_pago === 'SOLD OUT'} onClick={() => iniciarCompraDirecta(p)} className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg transition-all ${p.estado_pago === 'SOLD OUT' ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed' : 'bg-pink-500 text-white hover:bg-pink-600 shadow-3xs'}`}>Pedir</button>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
-        {/* 📝 FORMULARIO DE CHECKOUT */}
-        {orderStep === 'checkout' && selectedProd && (
-          <div className="space-y-4 pt-2">
-            <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">📋 Formulario de Pedido</h2>
-            <div className="p-3 bg-zinc-50 rounded-2xl flex gap-3 items-center border border-zinc-100">
-              <img src={selectedProd.imagen} className="w-12 h-12 object-cover rounded-xl border border-zinc-200" />
-              <div>
-                <h4 className="text-xs font-bold text-zinc-700">{selectedProd.nombre}</h4>
-                <p className="text-[10px] text-zinc-400 font-mono">Precio Unitario: {selectedProd.precio} | Stock: {selectedProd.stock} un.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 font-mono text-[11px]">
-              <div>
-                <label className="block text-zinc-400 mb-1 uppercase font-bold text-[9px]">Nombre Completo *</label>
-                <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-white border border-zinc-200 rounded-xl p-2 focus:outline-none focus:border-pink-300 font-sans" placeholder="Ej. Lia Hwang" />
-              </div>
-              <div>
-                <label className="block text-zinc-400 mb-1 uppercase font-bold text-[9px]">Instagram / Twitter *</label>
-                <input type="text" value={formData.social} onChange={(e) => setFormData({...formData, social: e.target.value})} className="w-full bg-white border border-zinc-200 rounded-xl p-2 focus:outline-none focus:border-pink-300 font-sans" placeholder="Ej. @lia_hwang" />
-              </div>
-              <div>
-                <label className="block text-zinc-400 mb-1 uppercase font-bold text-[9px]">Cantidad *</label>
-                <input type="number" min="1" max={selectedProd.stock} value={formData.qty} onChange={(e) => setFormData({...formData, qty: Math.min(selectedProd.stock, Math.max(1, parseInt(e.target.value) || 1))})} className="w-full bg-white border border-zinc-200 rounded-xl p-2 focus:outline-none focus:border-pink-300" />
-              </div>
-              <div>
-                <label className="block text-zinc-400 mb-1 uppercase font-bold text-[9px]">Método de Envío *</label>
-                <select value={formData.shippingOption} onChange={(e) => setFormData({...formData, shippingOption: e.target.value})} className="w-full bg-white border border-zinc-200 rounded-xl p-2 focus:outline-none focus:border-pink-300 appearance-none">
-                  <option value="quito">Quito (Servientrega / Laarcourier) - $3.50</option>
-                  <option value="provincia">Provincia (Servientrega) - $6.50</option>
-                  <option value="peru">Envío Especial Internacional (Perú) - $0.00</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-zinc-400 mb-1 uppercase font-bold text-[9px]">Dirección de Entrega Completa *</label>
-                <textarea value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} className="w-full bg-white border border-zinc-200 rounded-xl p-2 focus:outline-none focus:border-pink-300 font-sans h-16" placeholder="Calle principal, numeración, calle secundaria y referencia..." />
-              </div>
-            </div>
-
-            <div className="border-t border-zinc-100 pt-3 space-y-1.5 font-mono text-[10px] text-zinc-500">
-              <div className="flex justify-between"><span>Subtotal ({formData.qty} un.):</span><span className="font-bold text-zinc-700">${subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span>Costo de Envío:</span><span className="font-bold text-zinc-700">${costoEnvio.toFixed(2)}</span></div>
-              <div className="flex justify-between text-xs font-black text-pink-500 pt-1 border-t border-dashed border-zinc-100">
-                <span>TOTAL A PAGAR:</span><span>${totalPagar.toFixed(2)} USD</span>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setOrderStep('browse')} className="flex-1 bg-zinc-100 text-zinc-500 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-full hover:bg-zinc-200 transition-all cursor-pointer">Volver</button>
-              <button onClick={handleWhatsAppRedirect} className="flex-1 bg-zinc-900 text-white text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-full hover:bg-pink-400 transition-all cursor-pointer">Confirmar pedido ➔</button>
-            </div>
-          </div>
-        )}
-
-        {/* 🔒 INICIAR SESIÓN REQUERIDO */}
-        {orderStep === 'auth_required' && (
-          <div className="text-center py-8 space-y-4">
-            <div className="text-3xl">🔑</div>
-            <h3 className="text-sm font-bold text-zinc-700">Inicio de Sesión Requerido</h3>
-            <p className="text-[11px] text-zinc-400 font-mono max-w-xs mx-auto">Para poder registrar el stock de tu compra en tu escritorio, necesitas estar conectado a tu cuenta.</p>
-            <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setOrderStep('browse')} className="px-4 py-2 bg-zinc-100 text-zinc-500 text-[10px] font-bold uppercase tracking-wider rounded-full hover:bg-zinc-200 transition-all">Regresar</button>
-              <Link href="/login" className="px-4 py-2 bg-pink-400 text-white text-[10px] font-bold uppercase tracking-wider rounded-full hover:bg-pink-500 transition-all">Iniciar Sesión</Link>
-            </div>
-          </div>
-        )}
-
-        {/* 🎉 PEDIDO EXITOSO */}
-        {orderStep === 'success' && (
-          <div className="text-center py-12 space-y-4">
-            <div className="text-4xl animate-bounce">🎀</div>
-            <h2 className="text-lg font-black text-zinc-700 lowercase">¡pedido enviado con éxito!</h2>
-            <p className="text-[11px] text-zinc-400 font-mono max-w-xs mx-auto">Tu orden ya se guardó en tu cuenta y te redirigimos a WhatsApp para coordinar el pago. ¡Gracias por comprar en Atelier de Hyun! ✿</p>
-            <button onClick={() => setOrderStep('browse')} className="mt-4 px-5 py-2 bg-zinc-900 text-white text-[10px] font-bold uppercase tracking-wider rounded-full hover:bg-pink-400 transition-all cursor-pointer">Ver más productos</button>
-          </div>
-        )}
-
+        </div>
       </div>
+
+      {/* MODAL CHECKOUT DE PRODUCTO FÍSICO */}
+      {mostrarModalCompra && productoAComprar && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <form onSubmit={procesarPedidoShop} className="bg-white border rounded-3xl p-5 max-w-md w-full space-y-3 shadow-xl">
+            <div className="border-b pb-1 flex justify-between items-center"><h3 className="text-xs font-black text-purple-600 uppercase font-mono">🛍️ COMPRA: {productoAComprar.nombre_producto}</h3><button type="button" onClick={() => setMostrarModalCompra(false)} className="text-zinc-400 text-xs font-bold">✕</button></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Nombre Completo</label><input type="text" required value={formNombre} onChange={e => setFormNombre(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+              <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Instagram (Sin @)</label><input type="text" required value={formInstagram} onChange={e => setFormInstagram(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50 font-bold text-purple-600" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Teléfono</label><input type="tel" required value={formTelefono} onChange={e => setFormTelefono(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+              <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Ciudad / Provincia</label><input type="text" required value={formCiudad} onChange={e => setFormCiudad(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+            </div>
+            <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Dirección Domicilio</label><input type="text" required value={formDireccion} onChange={e => setFormDireccion(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50" /></div>
+            <div className="flex flex-col gap-0.5"><label className="text-[8px] font-bold uppercase text-zinc-400">Ubicación Envío (Costo adicional)</label><select value={formMetodoEnvio} onChange={e => setFormMetodoEnvio(e.target.value)} className="border rounded-xl px-2.5 py-1.5 text-xs bg-zinc-50/50 font-bold"><option value="quito">Quito (+$3.50)</option><option value="provincia">Otras Provincias (+$6.50)</option><option value="peru">Perú Internac. ($0.00)</option></select></div>
+            <button type="submit" className="w-full py-2.5 bg-zinc-950 text-white font-black text-xs uppercase tracking-widest rounded-xl mt-1">🔒 Confirmar Compra de Tienda</button>
+          </form>
+        </div>
+      )}
+
+      {/* COMPROBANTE FINAL DE LA SHOP */}
+      {datosExito && (
+        <div className="fixed inset-0 bg-zinc-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-[#FFF0F4] border border-rose-200 rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-xl animate-fade text-center">
+            <h4 className="text-xs font-black text-pink-500 uppercase">✨ ¡Reserva de Shop Exitosa! 🫧</h4>
+            <div className="bg-white p-4 rounded-xl text-left text-xs space-y-1 text-zinc-700">
+              <p><strong>🏦 Cuentas:</strong> Pichincha / Produbanco (Ahorros)</p>
+              <p><strong>📦 Artículo:</strong> {datosExito.producto}</p>
+              <p><strong>💵 Valor Final (+ Envío):</strong> <span className="text-pink-500 font-black">${datosExito.total.toFixed(2)} USD</span></p>
+            </div>
+            <a href={`https://whatsapp.com{NUMERO_WHATSAPP}&text=${encodeURIComponent(`¡Holis, Atelier! Compré un artículo en stock físico 🛍️✨\n\n💌 *Joiner:* ${formNombre} (@${formInstagram})\n📱 *Contacto:* ${formTelefono}\n📍 *Ubicación:* ${formCiudad} — ${formDireccion}\n\n📦 *Artículo:* ${datosExito.producto}\n💰 *Monto Final (+ Envío):* $${datosExito.total.toFixed(2)} USD\n\nAdjunto por aquí mi comprobante de depósito. 💗`)}`} target="_blank" rel="noopener noreferrer" onClick={() => setDatosExito(null)} className="w-full py-2.5 bg-emerald-500 text-white font-black text-xs uppercase rounded-xl block">💬 Enviar Comprobante a WhatsApp</a>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
-  
