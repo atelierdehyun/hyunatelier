@@ -23,7 +23,6 @@ export default function AdminPanelPremium() {
   const [productosTiendaAdmin, setProductosTiendaAdmin] = useState<ProductoAdmin[]>([])
   const [inputsStock, setInputsStock] = useState<{ [prodId: number]: { [slot: string]: string } }>({})
   const [idProductoStockSelected, setIdProductoStockSelected] = useState<number | null>(null)
-  const [message, setMessage] = useState('')
   const correoAdmin = 'liahwang1852@gmail.com'
 
   const [newGoTitle, setNewGoTitle] = useState('')
@@ -51,7 +50,7 @@ export default function AdminPanelPremium() {
   const [editQty, setEditQty] = useState('')
   const [editDesc, setEditDesc] = useState('')
   async function uploadImageHandler(e: React.ChangeEvent<HTMLInputElement>, targetForm: 'go' | 'prod' | 'shop') {
-    const file = e.target.files?.[0] // 🌟 CORREGIDO
+    const file = e.target.files?.[0]
     if (!file) return
     setSubiendoImagen(true)
     const fileExt = file.name.split('.').pop()
@@ -244,14 +243,14 @@ export default function AdminPanelPremium() {
       </div>
 
       <div className="w-full max-w-4xl mt-4">
-      {pestanaAdmin === 'lanzar' && (
+        {pestanaAdmin === 'lanzar' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start animate-fade">
             <form onSubmit={handleCreateGO} className="bg-white border rounded-3xl p-5 space-y-2.5">
               <h2 className="text-[10px] font-black uppercase text-pink-500 border-b pb-1 font-mono">✿ STEP 1: REGISTRAR GO GLOBAL</h2>
               <div className="flex flex-col gap-1"><label className="text-[8px] font-bold uppercase text-zinc-400">Título del GO</label><input type="text" placeholder="STRAY KIDS" value={newGoTitle} onChange={e => setNewGoTitle(e.target.value)} className="border rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50" /></div>
               <div className="flex flex-col gap-1"><label className="text-[8px] font-bold uppercase text-zinc-400">Banda / Grupo</label><input type="text" placeholder="stray kids" value={newGoGroup} onChange={e => setNewGoGroup(e.target.value)} className="border rounded-xl px-3 py-1.5 text-xs bg-zinc-50/50" /></div>
               <div className="flex flex-col gap-1"><label className="text-[8px] font-bold uppercase text-zinc-400">Portada Catálogo</label><input type="file" accept="image/*" onChange={e => uploadImageHandler(e, 'go')} className="text-[10px] text-zinc-500" /></div>
-              <button type="submit" disabled={loadingForm || subiendoImagen} className="w-full bg-zinc-950 text-white font-black text-[9px] uppercase py-2 rounded-full tracking-widest mt-1">➕ LANZAR GO</button>
+              <button type="submit" disabled={loadingForm || subiendoImagen} className="w-full bg-zinc-950 text-white font-black text-[9px] uppercase py-2 rounded-full mt-1">➕ LANZAR GO</button>
             </form>
 
             <form onSubmit={handleCrearProducto} className="bg-white border rounded-3xl p-5 space-y-2.5">
